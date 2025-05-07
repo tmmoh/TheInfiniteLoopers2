@@ -301,6 +301,9 @@ class Agent:
         self._legalMoves = Board.legalMoves(self._color)
 
         
+        
+
+        
 
 
     def action(self, **referee: dict) -> Action:
@@ -345,7 +348,8 @@ class Agent:
         
 
     def minimax(self) -> Action:
-        depth = min(self.DEPTH_LIMIT, Board.MOVE_LIMIT - self._board.roundNumber)
+        # depth = min(self.DEPTH_LIMIT, Board.MOVE_LIMIT - self._board.roundNumber)
+        depth = min(math.floor(self._board.roundNumber ** (1/3)), Board.MOVE_LIMIT - self._board.roundNumber)
         best_score = (-math.inf, -math.inf)
         best_move = None
 
@@ -366,11 +370,27 @@ class Agent:
 
         playerDist = 0
         for frog in self._board._frogs(self._color):
-            playerDist += abs(frog.r - Board.winRow(self._color))
+            verticalDist = abs(frog.r - Board.winRow(self._color))
+            if verticalDist > 0:
+                cells = [Coord(Board.winRow(self._color), i) for i in range(0, BOARD_N)]
+                horizontalDist = BOARD_N - 1
+                for cell in cells:
+                    if not self._board._isFrogCell(cell):
+                        horizontalDist = min(horizontalDist, abs(frog.c - cell.c))
+                playerDist += verticalDist + horizontalDist
+
             
         opponentDist = 0
         for frog in self._board._frogs(self._opponent):
-            opponentDist += abs(frog.r - Board.winRow(self._color.opponent))
+            verticalDist = abs(frog.r - Board.winRow(self._color.opponent))
+            if verticalDist > 0:
+                cells = [Coord(Board.winRow(self._color.opponent), i) for i in range(0, BOARD_N)]
+                horizontalDist = BOARD_N - 1
+                for cell in cells:
+                    if not self._board._isFrogCell(cell):
+                        horizontalDist = min(horizontalDist, abs(frog.c - cell.c))
+                opponentDist += verticalDist + horizontalDist
+
 
         # Check for winner
         if playerDist == 0 and opponentDist != 0:
@@ -414,7 +434,80 @@ class Agent:
                     break
                 self._board.undoAction()
             return minEval
+        
 
+class MCTS_node:
+    def __init__(self, parent=None, action: Action = None):
+        self.parent = parent
+        self.action = action
+        self.children: list[MCTS_node] = []
+        self.visits = 0
+        self.wins = 0
+        self.untried_actions = board.getMoves() #How to store board ??
+
+    def fully_expanded(self):
+        return len(self.untried_actions) == 0
+    
+    def best_child(self, c_param=1):
+        choices = [
+            (child.wins / child.visits) + c_param * math.sqrt(math.log(self.visits) / child.visits)
+            for child in self.children
+        ]
+        return self.children[choices.index(max(choices))]
+    
+    def expand(self):
+        action = self.untried_actions.pop()
+        #play the action
+        child_node = MCTS_node(parent=self, action=action)
+        self.children.append(child_node)
+        return child_node
+    
+    def backpropagate(self, result):
+        self.visits += 1
+        self.wins += result
+        if self.parent:
+            self.parent.backpropagate(-result)
+
+
+class Agent_MCTS:
+
+    def MCTS(self) -> Action:
+        root = MCTS_node()
+
+        while('''Iteration time left'''):
+            node = root
+
+            #Selection
+            while node.fully_expanded() and node.children:
+                node = best_child()
+
+            #Expansion 
+            if not node.fully_expanded():
+                #Expand the node
+                node = node.expand()
+
+            #Simulation
+            result = self.simulation()
+
+            #Backpropagation
+            backpropagate(result)
+        
+    return
+
+    def simulation():
+        while('''Simulation Limit'''):
+            #Make random move
+            
+            #Check win condition
+            #If we win, return 1
+            #If opponent win, return -1
+            return
+
+        #If simulation time exceeded return no color (Draw/unfinished)
+    return None   
+    
+
+    
 
             
 
