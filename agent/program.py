@@ -3,6 +3,7 @@
 
 from referee.game import PlayerColor, Coord, Direction, \
     Action, MoveAction, GrowAction
+from referee.game import player
 from referee.game.board import CellState, BoardMutation, CellMutation
 from copy import deepcopy
 from collections import deque
@@ -283,7 +284,7 @@ class Agent:
     respond to various Freckers game events.
     """
 
-    DEPTH_LIMIT = 3
+    DEPTH_LIMIT = 5
 
     _color: PlayerColor
     _opponent: PlayerColor
@@ -345,7 +346,7 @@ class Agent:
         
 
     def minimax(self) -> Action:
-        depth = min(self.DEPTH_LIMIT, Board.MOVE_LIMIT - self._board.roundNumber)
+        depth = min(math.floor(self._board.roundNumber ** (1/3)), Board.MOVE_LIMIT - self._board.roundNumber)
         best_score = (-math.inf, -math.inf)
         best_move = None
 
@@ -359,6 +360,7 @@ class Agent:
                 best_move = move
             self._board.undoAction()
             
+        print("Best Score:", best_score)
         return best_move 
     
 
@@ -366,17 +368,31 @@ class Agent:
 
         playerDist = 0
         for frog in self._board._frogs(self._color):
-            playerDist += abs(frog.r - Board.winRow(self._color))
+            verticalDist = abs(frog.r - Board.winRow(self._color))
+            if verticalDist > 0:
+                cells = [Coord(Board.winRow(self._color), i) for i in range(0, BOARD_N)]
+                horizontalDist = BOARD_N - 1
+                for cell in cells:
+                    if not self._board._isFrogCell(cell):
+                        horizontalDist = min(horizontalDist, abs(frog.c - cell.c))
+                playerDist += verticalDist + horizontalDist
             
         opponentDist = 0
         for frog in self._board._frogs(self._opponent):
-            opponentDist += abs(frog.r - Board.winRow(self._color.opponent))
+            verticalDist = abs(frog.r - Board.winRow(self._color.opponent))
+            if verticalDist > 0:
+                cells = [Coord(Board.winRow(self._color.opponent), i) for i in range(0, BOARD_N)]
+                horizontalDist = BOARD_N - 1
+                for cell in cells:
+                    if not self._board._isFrogCell(cell):
+                        horizontalDist = min(horizontalDist, abs(frog.c - cell.c))
+                opponentDist += verticalDist + horizontalDist
 
         # Check for winner
-        if playerDist == 0 and opponentDist != 0:
+        if playerDist == 0 and opponentDist > 0:
             return (math.inf, opponentDist - playerDist)
         
-        if opponentDist == 0 and playerDist != 0:
+        if opponentDist == 0 and playerDist > 0:
             return (-math.inf, opponentDist - playerDist)
         
         if depth <= 0:
@@ -394,11 +410,10 @@ class Agent:
                 eval = self.minimax_value(depth - 1, alpha, beta)
                 maxEval = max(maxEval, eval)
                 alpha = max(alpha, eval)
+                self._board.undoAction()
                 if (beta <= alpha):
                     # Prune
-                    self._board.undoAction()
                     break
-                self._board.undoAction()
             return maxEval
 
         else: #Minimising Player - Opponent Move
@@ -408,11 +423,10 @@ class Agent:
                 eval = self.minimax_value(depth - 1, alpha, beta)
                 minEval = min(minEval, eval)
                 beta = min(beta, eval)
+                self._board.undoAction()
                 if (beta <= alpha):
                     # Prune
-                    self._board.undoAction()
                     break
-                self._board.undoAction()
             return minEval
 
 
