@@ -2,23 +2,21 @@
 # Project Part B: Game Playing Agent
 
 from referee.game import PlayerColor, Coord, Direction, \
-    Action, MoveAction, GrowAction, CellState, \
-    Board
+    Action, MoveAction, GrowAction
+from referee.game.board import CellState, BoardMutation, CellMutation
 from copy import deepcopy
+from collections import deque
 import math
+
+from referee.game.player import Player
+
 
 BOARD_N = 8
 MOVE_LIMIT = 150
 
-    
 
-class Agent:
-    """
-    This class is the "entry point" for your agent, providing an interface to
-    respond to various Freckers game events.
-    """
-
-    _ALL_DIRECTIONS: set[Direction] = set([
+class Board:
+    ALL_DIRECTIONS: set[Direction] = set([
         Direction.Left, 
         Direction.Right, 
         Direction.DownLeft, 
@@ -28,16 +26,16 @@ class Agent:
         Direction.Up,
         Direction.UpRight
     ])
-    _RED_MOVES: set[Direction | GrowAction] = set([
-        GrowAction, 
+    RED_MOVES: set[Direction | GrowAction] = set([
+        GrowAction(), 
         Direction.Left, 
         Direction.Right, 
         Direction.DownLeft, 
         Direction.Down, 
         Direction.DownRight
     ])
-    _BLUE_MOVES: set[Direction | GrowAction] = set([
-        GrowAction,
+    BLUE_MOVES: set[Direction | GrowAction] = set([
+        GrowAction(),
         Direction.Left,
         Direction.Right,
         Direction.UpLeft,
@@ -45,14 +43,202 @@ class Agent:
         Direction.UpRight
     ])
 
-    _color: PlayerColor
-    _opponent: PlayerColor
-    _roundNumber: int
-    _player: PlayerColor
-    _legalMoves: set[Direction | GrowAction]
+    roundNumber: int
+    currentPlayer: PlayerColor
     _board: dict[Coord, CellState]
     _redFrogs: set[Coord]
     _blueFrogs: set[Coord]
+    _history: deque
+
+    def __init__(self):
+        self._board: dict[Coord, CellState] = {
+            Coord(r, c): CellState() 
+            for r in range(BOARD_N) 
+            for c in range(BOARD_N)
+        }
+
+        for r in [0, BOARD_N - 1]:
+            for c in [0, BOARD_N - 1]:
+                self._board[Coord(r, c)] = CellState("LilyPad")
+
+        for r in [1, BOARD_N - 2]:
+            for c in range(1, BOARD_N - 1):
+                self._board[Coord(r, c)] = CellState("LilyPad")
+            
+        for c in range(1, BOARD_N - 1):
+            self._board[Coord(0, c)] = CellState(PlayerColor.RED)
+            self._redFrogs.add(Coord(0, c))
+            self._board[Coord(BOARD_N - 1, c)] = CellState(PlayerColor.BLUE)
+            self._blueFrogs.add(Coord(BOARD_N - 1, c))
+
+        self.currentPlayer: PlayerColor = PlayerColor.RED
+        self.roundNumber: int = 1
+        self._history: deque[BoardMutation] = deque()
+
+    def playAction(self, color: PlayerColor, action: Action):
+        mutation: BoardMutation
+        match action:
+            case MoveAction(coord, dirs):
+                dirs_text = ", ".join([str(dir) for dir in dirs])
+                print(f"Testing: {color} played MOVE action:")
+                print(f"  Coord: {coord}")
+                print(f"  Directions: {dirs_text}")
+                mutation = self._moveAction(color, action)
+            case GrowAction():
+                print(f"Testing: {color} played GROW action")
+                mutation = self._growAction(color)
+            case _:
+                raise ValueError(f"Unknown action type: {action}")
+
+        for mut in mutation.cell_mutations:
+            match self._board[mut.cell].state:
+                case PlayerColor.RED:
+                    self._redFrogs.remove(mut.cell)
+                case PlayerColor.BLUE:
+                    self._blueFrogs.remove(mut.cell)
+
+            self._board[mut.cell] = mut.next
+
+            match self._board[mut.cell].state:
+                case PlayerColor.RED:
+                    self._redFrogs.add(mut.cell)
+                case PlayerColor.BLUE:
+                    self._blueFrogs.add(mut.cell)
+
+        
+        self.currentPlayer = self.currentPlayer.opponent
+        self.roundNumber += 1
+        self._history.append(mutation)
+
+    def undoAction(self):
+        mutation: BoardMutation = self._history.pop()
+
+        for mut in mutation.cell_mutations:
+            match self._board[mut.cell].state:
+                case PlayerColor.RED:
+                    self._redFrogs.remove(mut.cell)
+                case PlayerColor.BLUE:
+                    self._blueFrogs.remove(mut.cell)
+
+            self._board[mut.cell] = mut.prev
+
+            match self._board[mut.cell].state:
+                case PlayerColor.RED:
+                    self._redFrogs.add(mut.cell)
+                case PlayerColor.BLUE:
+                    self._blueFrogs.add(mut.cell)
+
+        self.currentPlayer = self.currentPlayer.opponent
+        self.roundNumber -= 1
+        
+
+    def _frogs(self, color: PlayerColor) -> set[Coord]:
+        match color:
+            case PlayerColor.RED:
+                return self._redFrogs
+            case PlayerColor.BLUE:
+                return self._blueFrogs
+    
+    def _isFrogCell(self, coord: Coord) -> bool:
+        return self._board[coord].state == PlayerColor
+
+    def _isEmptyCell(self, coord: Coord) -> bool:
+        return self._board[coord].state == None
+
+    def _moveAction(self, color: PlayerColor, action: MoveAction) -> BoardMutation:
+        startCoord = action.coord
+        endCoord = startCoord
+
+        for dir in action.directions:
+            endCoord += dir
+            if self._isFrogCell(endCoord):
+                endCoord += dir
+
+        '''
+        self._board[endCoord] = self._board.pop(startCoord)
+        self._frogs(color).remove(startCoord) 
+        self._frogs(color).add(endCoord) 
+        '''
+
+        cellMutations = {
+            startCoord: CellMutation(
+                startCoord,
+                self._board[startCoord],
+                CellState(None)
+            ),
+            endCoord: CellMutation(
+                endCoord,
+                self._board[endCoord],
+                self._board[startCoord]
+            )
+        }
+
+        return BoardMutation(
+            action,
+            cell_mutations=set(cellMutations.values())
+        )
+
+
+
+    def _growAction(self, color: PlayerColor) -> BoardMutation: 
+        cellMutations = {}
+        neighbour_cells: set[Coord] = set()
+
+        for cell in self._frogs(color):
+            for direction in Direction:
+                try:
+                    neighbour = cell + direction
+                    neighbour_cells.add(neighbour)
+                except ValueError:
+                    pass
+
+        for cell in neighbour_cells:
+            if self._isEmptyCell(cell):
+                cellMutations[cell] = CellMutation(
+                    cell,
+                    self._board[cell],
+                    CellState("LilyPad")
+                )
+
+        return BoardMutation(
+            GrowAction(),
+            cell_mutations=set(cellMutations.values())
+        )
+
+        
+    @staticmethod
+    def legalMoves(color: PlayerColor) -> set[Direction | GrowAction]:
+        match color:
+            case PlayerColor.RED:
+                return Board.RED_MOVES
+            case PlayerColor.BLUE:
+                return Board.BLUE_MOVES
+
+    @staticmethod
+    def inBounds(coord: Coord) -> bool:
+        return (coord.r >= 0 and coord.r < BOARD_N 
+            and coord.c >= 0 and coord.c < BOARD_N)
+
+    @staticmethod
+    def winRow(color: PlayerColor) -> int:
+        match color:
+            case PlayerColor.RED:
+                return BOARD_N - 1
+            case PlayerColor.BLUE:
+                return 0
+
+    
+
+class Agent:
+    """
+    This class is the "entry point" for your agent, providing an interface to
+    respond to various Freckers game events.
+    """
+
+    _color: PlayerColor
+    _opponent: PlayerColor
+    _legalMoves: set[Direction | GrowAction]
+    _board: Board
 
     def __init__(self, color: PlayerColor, **referee: dict):
         """
@@ -60,22 +246,11 @@ class Agent:
         Any setup and/or precomputation should be done here.
         """
         self._color = color
-        self._opponent = self._opponent(color)
-        self._board = Board()._state
-        self._player = PlayerColor.RED
-        self._roundNumber = 1
+        self._opponent = color.opponent
+        self._board = Board()
+        self._legalMoves = Board.legalMoves(self._color)
 
-        match color:
-            case PlayerColor.RED:
-                print("Testing: I am playing as RED")
-                self._legalMoves = self._RED_MOVES
-            case PlayerColor.BLUE:
-                print("Testing: I am playing as BLUE")
-                self._legalMoves = self._BLUE_MOVES
         
-        for c in range(1, BOARD_N - 2):
-            self._redFrogs.add(Coord(0, c))
-            self._blueFrogs.add(Coord(BOARD_N - 1, c))
 
 
     def action(self, **referee: dict) -> Action:
@@ -109,101 +284,9 @@ class Agent:
         # which type of action was played and print out the details of the
         # action for demonstration purposes. You should replace this with your
         # own logic to update your agent's internal game state representation.
-        match action:
-            case MoveAction(coord, dirs):
-                dirs_text = ", ".join([str(dir) for dir in dirs])
-                print(f"Testing: {color} played MOVE action:")
-                print(f"  Coord: {coord}")
-                print(f"  Directions: {dirs_text}")
-
-                startCoord = coord
-                endCoord = startCoord
-
-                for dir in dirs:
-                    endCoord += dir
-                    if self._frogCell(coord):
-                        endCoord += dir
-
-                self._board[endCoord] = self._board.pop(startCoord)
-                self._frogs(color).remove(startCoord) 
-                self._frogs(color).add(endCoord) 
-
-                '''
-                # Keep track of all lilypad cells
-
-                # Whenever a frog moves to a new cell,
-                # check if surrounding cells can convert for each color
-                self._redPads.remove(endCoord)
-                self._bluePads.remove(endCoord)
-
-                for dir in self._ALL_DIRECTIONS:
-                    nextCoord = endCoord + dir
-                    if self._inBounds(nextCoord) and nextCoord not in self._board:
-                        self._pads(color).add(nextCoord)
-
-                # Whenever a frog leaves a cell,
-                # check if current and surrounding cells can convert for each color
-                '''
-                
-
-            case GrowAction():
-                print(f"Testing: {color} played GROW action")
-            case _:
-                raise ValueError(f"Unknown action type: {action}")
         
-        self._roundNumber += 1
-        self._player = self._opponent(self._player)
-    
+        self._board.playAction(color, action)
 
-    def _legalMoves(self, color: PlayerColor) -> set[Direction | GrowAction]:
-        match color:
-            case PlayerColor.RED:
-                return self._RED_MOVES
-            case PlayerColor.BLUE:
-                return self._BLUE_MOVES
-
-    def _frogs(self, color: PlayerColor) -> set[Coord]:
-        match color:
-            case PlayerColor.RED:
-                return self._redFrogs
-            case PlayerColor.BLUE:
-                return self._blueFrogs
-    
-    def _pads(self, color: PlayerColor) -> set[Coord]:
-        match color:
-            case PlayerColor.RED:
-                return self._redPads
-            case PlayerColor.BLUE:
-                return self._bluePads
-    
-    def _opponent(color: PlayerColor) -> PlayerColor:
-        match color:
-            case PlayerColor.RED:
-                return PlayerColor.BLUE
-            case PlayerColor.BLUE:
-                return PlayerColor.RED
-
-    def _frogCell(self, coord: Coord) -> bool:
-        return (self._board.get(coord) == CellState(PlayerColor.RED)
-                or self._board.get(coord) == CellState(PlayerColor.BLUE))
-
-    def _growAction(self, color: PlayerColor) -> bool: 
-        for frog in self._frogs(color):
-            for dir in self._ALL_DIRECTIONS:
-                nextCoord = frog + dir
-                if self._inBounds(nextCoord) and nextCoord not in self._board:
-                    self._board[nextCoord] = CellState("LilyPad")
-        
-    def _inBounds(coord: Coord) -> bool:
-        return (coord.r >= 0 and coord.r < BOARD_N 
-            and coord.c >= 0 and coord.c < BOARD_N)
-
-    def _winRow(color: PlayerColor) -> int:
-        match color:
-            case PlayerColor.RED:
-                return BOARD_N - 1
-            case PlayerColor.BLUE:
-                return 0
 
             
         
