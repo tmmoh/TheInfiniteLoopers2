@@ -25,16 +25,14 @@ class Board:
         Direction.Up,
         Direction.UpRight
     ])
-    RED_MOVES: set[Direction | GrowAction] = set([
-        GrowAction(), 
+    RED_MOVES: set[Direction] = set([
         Direction.Left, 
         Direction.Right, 
         Direction.DownLeft, 
         Direction.Down, 
         Direction.DownRight
     ])
-    BLUE_MOVES: set[Direction | GrowAction] = set([
-        GrowAction(),
+    BLUE_MOVES: set[Direction] = set([
         Direction.Left,
         Direction.Right,
         Direction.UpLeft,
@@ -139,7 +137,11 @@ class Board:
                 return self._blueFrogs
     
     def _isFrogCell(self, coord: Coord) -> bool:
-        return self._board[coord].state == PlayerColor
+        return (self._board[coord].state == PlayerColor.BLUE 
+            or self._board[coord].state == PlayerColor.RED)
+
+    def _isPadCell(self, coord: Coord) -> bool:
+        return self._board[coord].state == "LilyPad"
 
     def _isEmptyCell(self, coord: Coord) -> bool:
         return self._board[coord].state == None
@@ -206,7 +208,7 @@ class Board:
 
         
     @staticmethod
-    def legalMoves(color: PlayerColor) -> set[Direction | GrowAction]:
+    def legalMoves(color: PlayerColor) -> set[Direction]:
         match color:
             case PlayerColor.RED:
                 return Board.RED_MOVES
@@ -228,21 +230,18 @@ class Board:
 
     def getMoves(self) -> list[Action]:
         moves: list[Action] = []
-        
+        mutation: BoardMutation = self._growAction(self.currentPlayer)
+        if len(mutation.cell_mutations) > 0:
+            moves.append(GrowAction())
+
         for frog in self._frogs(self.currentPlayer):
             for move in self.legalMoves(self.currentPlayer):
-                match move:
-                    case GrowAction():
-                        mutation: BoardMutation = self._growAction(self.currentPlayer)
-                        if len(mutation.cell_mutations) > 0:
-                            moves.append(move)
-                    case Direction():
-                        try:
-                            nextCoord: Coord = frog + move
-                            if self._board[nextCoord] == CellState("LilyPad"):
-                                moves.append(MoveAction(frog, move))
-                        except ValueError:
-                            pass
+                try:
+                    nextCoord: Coord = frog + move
+                    if self._isPadCell(nextCoord):
+                        moves.append(MoveAction(frog, move))
+                except ValueError:
+                    pass
 
             # Calculate jumps and multi-jumps for each frog
             self.getJumpMoves(moves, frog)
@@ -253,34 +252,30 @@ class Board:
     # Recursive function
     def getJumpMoves(self, moves: list[Action], currCoord: Coord, prevCoord: Coord | None = None, prevMove: MoveAction | None = None):
         for dir in self.legalMoves(self.currentPlayer):
-            match dir:
-                case Direction():
-                    try:
-                        nextCoord: Coord = currCoord + dir
-                        nextCell = self._board[nextCoord].state
-                        jumpCoord = currCoord + dir * 2
-                        jumpCell = self._board[jumpCoord].state
+            try:
+                nextCoord: Coord = currCoord + dir
+                jumpCoord = currCoord + dir * 2
 
-                        if jumpCell == "LilyPad" and nextCell == PlayerColor:
-                            if jumpCoord == prevCoord:
-                                # Don't jump back to where you already were
-                                # Prevents infinite loop
-                                # There are no other ways to create cycles
-                                continue
-                            
-                            moveAction: MoveAction
-                            if not prevMove:
-                                moveAction = MoveAction(currCoord, (dir,))
-                            else:
-                                moveAction = MoveAction(currCoord, prevMove.directions + (dir,))
+                if self._isPadCell(jumpCoord) and self._isFrogCell(nextCoord):
+                    if jumpCoord == prevCoord:
+                        # Don't jump back to where you already were
+                        # Prevents infinite loop
+                        # There are no other ways to create cycles
+                        continue
+                    
+                    moveAction: MoveAction
+                    if not prevMove:
+                        moveAction = MoveAction(currCoord, (dir,))
+                    else:
+                        moveAction = MoveAction(prevMove.coord, prevMove.directions + (dir,))
 
-                            moves.append(moveAction)
-                            
-                            # Copy and recurse
-                            self.getJumpMoves(moves, jumpCoord, prevCoord=currCoord, prevMove=moveAction)
-                    except ValueError:
-                        pass
-    
+                    moves.append(moveAction)
+                    
+                    # Copy and recurse
+                    self.getJumpMoves(moves, jumpCoord, prevCoord=currCoord, prevMove=moveAction)
+            except ValueError:
+                pass
+
 
 class Agent:
     """
@@ -353,8 +348,10 @@ class Agent:
         depth = min(self.DEPTH_LIMIT, Board.MOVE_LIMIT - self._board.roundNumber)
         best_score = (-math.inf, -math.inf)
         best_move = None
-        
-        for move in self._board.getMoves(): 
+
+        moveList = self._board.getMoves()
+        print(*moveList)
+        for move in moveList: 
             score = self.minimax_value(depth)
             if(score > best_score):
                 best_score = score
@@ -409,7 +406,7 @@ class Agent:
                 eval = self.minimax_value(depth - 1, alpha, beta)
                 minEval = min(minEval, eval)
                 beta = min(beta, eval)
-                if (alpha <= beta):
+                if (beta <= alpha):
                     # Prune
                     self._board.undoAction()
                     break
