@@ -352,10 +352,12 @@ class Agent:
         moveList = self._board.getMoves()
         print(*moveList)
         for move in moveList: 
+            self._board.playAction(self._board.currentPlayer, move)
             score = self.minimax_value(depth)
             if(score > best_score):
                 best_score = score
                 best_move = move
+            self._board.undoAction()
             
         return best_move 
     
