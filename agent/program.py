@@ -24,21 +24,21 @@ class Board:
         Direction.DownRight,
         Direction.UpLeft,
         Direction.Up,
-        Direction.UpRight
+        Direction.UpRight,
     ])
     RED_MOVES: set[Direction] = set([
+        Direction.Down, 
+        Direction.DownLeft, 
+        Direction.DownRight,
         Direction.Left, 
         Direction.Right, 
-        Direction.DownLeft, 
-        Direction.Down, 
-        Direction.DownRight
     ])
     BLUE_MOVES: set[Direction] = set([
+        Direction.Up,
+        Direction.UpLeft,
+        Direction.UpRight,
         Direction.Left,
         Direction.Right,
-        Direction.UpLeft,
-        Direction.Up,
-        Direction.UpRight
     ])
 
     MOVE_LIMIT = 150
@@ -236,7 +236,14 @@ class Board:
             moves.append(GrowAction())
 
         for frog in self._frogs(self.currentPlayer):
-            for move in self.legalMoves(self.currentPlayer):
+            # Calculate jumps and multi-jumps for each frog
+            # First because they're likely better moves, helps with pruning
+            self.getJumpMoves(moves, frog)
+
+        for move in self.legalMoves(self.currentPlayer):
+            # Order by directions then by frogs because direction is more
+            # valuable, should help with pruning
+            for frog in self._frogs(self.currentPlayer):
                 try:
                     nextCoord: Coord = frog + move
                     if self._isPadCell(nextCoord):
@@ -244,8 +251,6 @@ class Board:
                 except ValueError:
                     pass
 
-            # Calculate jumps and multi-jumps for each frog
-            self.getJumpMoves(moves, frog)
 
         return moves
 
@@ -349,15 +354,28 @@ class Agent:
         
 
     def minimax(self) -> Action:
-        depth = min(math.floor(self._board.roundNumber ** (1/3)), Board.MOVE_LIMIT - self._board.roundNumber)
-        best_score = (-math.inf, -math.inf)
+        depth = min(1 + math.floor(self._board.roundNumber ** (1/4)), Board.MOVE_LIMIT - self._board.roundNumber)
+        best_score = (-math.inf, -math.inf, -math.inf)
         best_move = None
 
         moveList = self._board.getMoves()
         print(*moveList)
         for move in moveList: 
+            with open("log.txt", mode="a") as fp:
+                fp.write(f'Round {self._board.roundNumber}: Searching through move {move}\n')
+                fp.write(f'{self._color} to play\n')
+            '''
+            print("Searching through move", move)
+            print(self._color, "to play")
+            print(self._board.currentPlayer, "on the board")
+            '''
+            self.indent += 1
             self._board.playAction(self._board.currentPlayer, move)
             score = self.minimax_value(depth)
+            self.indent -= 1
+            with open("log.txt", mode="a") as fp:
+                fp.write(f'Overall score of {score} for move {move}\n')
+            #print("Overall Score of", score, move)
             if(score > best_score):
                 best_score = score
                 best_move = move
@@ -366,53 +384,73 @@ class Agent:
         print("Best Score:", best_score)
         return best_move 
     
-
-    def minimax_value(self, depth: int, alpha: tuple[float] = (-math.inf, -math.inf), beta: tuple[float] = (math.inf, math.inf)) -> tuple[float]:
+    indent = 1
+    def minimax_value(self, depth: int, alpha: tuple[float] = (-math.inf, -math.inf, -math.inf), beta: tuple[float] = (math.inf, math.inf, math.inf)) -> tuple[float]:
 
         playerDist = 0
+        playerCount = 0
         for frog in self._board._frogs(self._color):
             verticalDist = abs(frog.r - Board.winRow(self._color))
             if verticalDist > 0:
                 cells = [Coord(Board.winRow(self._color), i) for i in range(0, BOARD_N)]
                 horizontalDist = BOARD_N - 1
                 for cell in cells:
-                    if not self._board._isFrogCell(cell):
+                    if self._board._board[cell].state != self._color:
                         horizontalDist = min(horizontalDist, abs(frog.c - cell.c))
-                playerDist += verticalDist + horizontalDist
+                playerDist += max(verticalDist, horizontalDist)
+            else:
+                playerCount += 1
             
         opponentDist = 0
+        opponentCount = 0
         for frog in self._board._frogs(self._opponent):
             verticalDist = abs(frog.r - Board.winRow(self._color.opponent))
             if verticalDist > 0:
                 cells = [Coord(Board.winRow(self._color.opponent), i) for i in range(0, BOARD_N)]
                 horizontalDist = BOARD_N - 1
                 for cell in cells:
-                    if not self._board._isFrogCell(cell):
+                    if self._board._board[cell].state != self._color.opponent:
                         horizontalDist = min(horizontalDist, abs(frog.c - cell.c))
-                opponentDist += verticalDist + horizontalDist
+                opponentDist += max(verticalDist, horizontalDist)
+            else:
+                opponentCount += 1
 
         # Check for winner
         if playerDist == 0 and opponentDist > 0:
-            return (math.inf, opponentDist - playerDist)
+            return (math.inf, opponentDist, opponentDist - playerDist)
         
         if opponentDist == 0 and playerDist > 0:
-            return (-math.inf, opponentDist - playerDist)
+            return (-math.inf, -playerDist, opponentDist - playerDist)
         
         if depth <= 0:
-            return (-playerDist, opponentDist - playerDist)
+            return (playerCount - opponentCount, -playerDist, opponentDist - playerDist)
 
         # keep going with minimax
 
         moveList = self._board.getMoves()
 
+        self.indent -= 1
+        with open("log.txt", mode="a") as fp:
+            fp.write('    ' * self.indent + f'{self._board.currentPlayer} selecting best move\n')
+        self.indent += 1
+        # print(self._board.currentPlayer, "selecting best move")
         # Maximising player
         if self._board.currentPlayer == self._color:
-            maxEval = (-math.inf, -math.inf)
+            maxEval = (-math.inf, -math.inf, -math.inf)
             for move in moveList:
+                with open("log.txt", mode="a") as fp:
+                    fp.write('    ' * self.indent + f'Trying {move}\n')
                 self._board.playAction(self._board.currentPlayer, move)
+                self.indent += 1
                 eval = self.minimax_value(depth - 1, alpha, beta)
+                with open("log.txt", mode="a") as fp:
+                    fp.write('    ' * self.indent + f'{move} with score {eval}\n')
+                # print(eval, move)
                 maxEval = max(maxEval, eval)
                 alpha = max(alpha, eval)
+                self.indent -= 1
+                with open("log.txt", mode="a") as fp:
+                    fp.write('    ' * self.indent + f'Undoing {move}\n')
                 self._board.undoAction()
                 if (beta <= alpha):
                     # Prune
@@ -420,12 +458,21 @@ class Agent:
             return maxEval
 
         else: #Minimising Player - Opponent Move
-            minEval = (math.inf, math.inf)
+            minEval = (math.inf, math.inf, math.inf)
             for move in moveList:
+                with open("log.txt", mode="a") as fp:
+                    fp.write(f'Trying {move}\n')
                 self._board.playAction(self._board.currentPlayer, move)
+                self.indent += 1
                 eval = self.minimax_value(depth - 1, alpha, beta)
+                with open("log.txt", mode="a") as fp:
+                    fp.write('    ' * self.indent + f'{move} with score {eval}\n')
+                # print(eval, move)
                 minEval = min(minEval, eval)
                 beta = min(beta, eval)
+                self.indent -= 1
+                with open("log.txt", mode="a") as fp:
+                    fp.write('    ' * self.indent + f'Undoing {move}\n')
                 self._board.undoAction()
                 if (beta <= alpha):
                     # Prune
@@ -433,6 +480,7 @@ class Agent:
             return minEval
         
 
+'''
 class MCTS_node:
     def __init__(self, parent=None, action: Action = None):
         self.parent = parent
@@ -471,7 +519,7 @@ class Agent_MCTS:
     def MCTS(self) -> Action:
         root = MCTS_node()
 
-        while('''Iteration time left'''):
+        while(''Iteration time left''):
             node = root
 
             #Selection
@@ -492,7 +540,7 @@ class Agent_MCTS:
     return
 
     def simulation():
-        while('''Simulation Limit'''):
+        while(''Simulation Limit''):
             #Make random move
             
             #Check win condition
@@ -503,6 +551,7 @@ class Agent_MCTS:
         #If simulation time exceeded return no color (Draw/unfinished)
     return None   
     
+    '''
 
     
 
