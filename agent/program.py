@@ -58,6 +58,9 @@ class Board:
             for c in range(BOARD_N)
         }
 
+        self._redFrogs = set()
+        self._blueFrogs = set()
+
         for r in [0, BOARD_N - 1]:
             for c in [0, BOARD_N - 1]:
                 self._board[Coord(r, c)] = CellState("LilyPad")
@@ -80,13 +83,8 @@ class Board:
         mutation: BoardMutation
         match action:
             case MoveAction(coord, dirs):
-                dirs_text = ", ".join([str(dir) for dir in dirs])
-                print(f"Testing: {color} played MOVE action:")
-                print(f"  Coord: {coord}")
-                print(f"  Directions: {dirs_text}")
                 mutation = self._moveAction(color, action)
             case GrowAction():
-                print(f"Testing: {color} played GROW action")
                 mutation = self._growAction(color)
             case _:
                 raise ValueError(f"Unknown action type: {action}")
@@ -235,14 +233,16 @@ class Board:
             for move in self.legalMoves(self.currentPlayer):
                 match move:
                     case GrowAction():
-                        moves.append(move)
+                        mutation: BoardMutation = self._growAction(self.currentPlayer)
+                        if len(mutation.cell_mutations) > 0:
+                            moves.append(move)
                     case Direction():
-                        nextCoord: Coord = frog + move
-                        if not Board.inBounds(nextCoord):
-                            continue
-                        
-                        if self._board[nextCoord] == CellState("LilyPad"):
-                            moves.append(MoveAction(frog, move))
+                        try:
+                            nextCoord: Coord = frog + move
+                            if self._board[nextCoord] == CellState("LilyPad"):
+                                moves.append(MoveAction(frog, move))
+                        except ValueError:
+                            pass
 
             # Calculate jumps and multi-jumps for each frog
             self.getJumpMoves(moves, frog)
@@ -255,31 +255,31 @@ class Board:
         for dir in self.legalMoves(self.currentPlayer):
             match dir:
                 case Direction():
-                    nextCoord: Coord = currCoord + dir
-                    if not Board.inBounds(nextCoord):
-                        continue
-                    
-                    nextCell = self._board[nextCoord].state
-                    jumpCoord = currCoord + dir * 2
-                    jumpCell = self._board[jumpCoord].state
+                    try:
+                        nextCoord: Coord = currCoord + dir
+                        nextCell = self._board[nextCoord].state
+                        jumpCoord = currCoord + dir * 2
+                        jumpCell = self._board[jumpCoord].state
 
-                    if jumpCell == "LilyPad" and nextCell == PlayerColor:
-                        if jumpCoord == prevCoord:
-                            # Don't jump back to where you already were
-                            # Prevents infinite loop
-                            # There are no other ways to create cycles
-                            continue
-                        
-                        moveAction: MoveAction
-                        if not prevMove:
-                            moveAction = MoveAction(currCoord, (dir,))
-                        else:
-                            moveAction = MoveAction(currCoord, prevMove.directions + (dir,))
+                        if jumpCell == "LilyPad" and nextCell == PlayerColor:
+                            if jumpCoord == prevCoord:
+                                # Don't jump back to where you already were
+                                # Prevents infinite loop
+                                # There are no other ways to create cycles
+                                continue
+                            
+                            moveAction: MoveAction
+                            if not prevMove:
+                                moveAction = MoveAction(currCoord, (dir,))
+                            else:
+                                moveAction = MoveAction(currCoord, prevMove.directions + (dir,))
 
-                        moves.append(moveAction)
-                        
-                        # Copy and recurse
-                        self.getJumpMoves(moves, jumpCoord, prevCoord=currCoord, prevMove=moveAction)
+                            moves.append(moveAction)
+                            
+                            # Copy and recurse
+                            self.getJumpMoves(moves, jumpCoord, prevCoord=currCoord, prevMove=moveAction)
+                    except ValueError:
+                        pass
     
 
 class Agent:
@@ -288,7 +288,7 @@ class Agent:
     respond to various Freckers game events.
     """
 
-    DEPTH_LIMIT = 150
+    DEPTH_LIMIT = 1
 
     _color: PlayerColor
     _opponent: PlayerColor
@@ -321,13 +321,10 @@ class Agent:
         match self._color:
             case PlayerColor.RED:
                 print("Testing: RED is playing a MOVE action")
-                return MoveAction(
-                    Coord(0, 3),
-                    [Direction.Down]
-                )
             case PlayerColor.BLUE:
                 print("Testing: BLUE is playing a GROW action")
-                return GrowAction()
+        
+        return self.minimax()
 
     def update(self, color: PlayerColor, action: Action, **referee: dict):
         """
@@ -339,6 +336,16 @@ class Agent:
         # which type of action was played and print out the details of the
         # action for demonstration purposes. You should replace this with your
         # own logic to update your agent's internal game state representation.
+        match action:
+            case MoveAction(coord, dirs):
+                dirs_text = ", ".join([str(dir) for dir in dirs])
+                print(f"Testing: {color} played MOVE action:")
+                print(f"  Coord: {coord}")
+                print(f"  Directions: {dirs_text}")
+            case GrowAction():
+                print(f"Testing: {color} played GROW action")
+            case _:
+                raise ValueError(f"Unknown action type: {action}")
         
         self._board.playAction(color, action)
 
@@ -347,13 +354,13 @@ class Agent:
         
         
 
-    def minimax(self) -> MoveAction:
+    def minimax(self) -> Action:
         depth = min(self.DEPTH_LIMIT, Board.MOVE_LIMIT - self._board.roundNumber)
         best_score = -math.inf
         best_move = None
         
-        for move in moveList: 
-            score = minimax_value()
+        for move in self._board.getMoves(): 
+            score = self.minimax_value(depth)
             if(score > best_score):
                 best_score = score
                 best_move = move
@@ -361,14 +368,14 @@ class Agent:
         return best_move 
     
 
-    def minimax_value(self, depth: int, playerFrogs: set[Coord], opponentFrogs: set[Coord], color: PlayerColor) -> float:
+    def minimax_value(self, depth: int, alpha: float = -math.inf, beta: float = math.inf) -> float:
 
         playerDist = 0
-        for frog in playerFrogs:
+        for frog in self._board._frogs(self._color):
             playerDist += abs(frog.r - Board.winRow(self._color))
             
         opponentDist = 0
-        for frog in opponentFrogs:
+        for frog in self._board._frogs(self._opponent):
             opponentDist += abs(frog.r - Board.winRow(self._color.opponent))
 
         # Check for winner
@@ -383,28 +390,38 @@ class Agent:
 
         # keep going with minimax
 
+        moveList = self._board.getMoves()
+
         # Maximising player
-        if color == self._color:
+        if self._board.currentPlayer == self._color:
             maxEval = -math.inf
             for move in moveList:
-                new_state = apply_move
-                eval = minimax_value('''Opponent to move''')
+                self._board.playAction(self._board.currentPlayer, move)
+                eval = self.minimax_value(depth - 1, alpha, beta)
                 maxEval = max(maxEval, eval)
-            return bestScore
+                alpha = max(alpha, eval)
+                if (beta <= alpha):
+                    # Prune
+                    self._board.undoAction()
+                    break
+                self._board.undoAction()
+            return maxEval
 
         else: #Minimising Player - Opponent Move
-            best_score = math.inf
-            for move in movelist:
-                new_state = apply_move
-                eval = minimax_value('''Our move''')
+            minEval = math.inf
+            for move in moveList:
+                self._board.playAction(self._board.currentPlayer, move)
+                eval = self.minimax_value(depth - 1, alpha, beta)
                 minEval = min(minEval, eval)
-            return best_score
+                beta = min(beta, eval)
+                if (alpha <= beta):
+                    # Prune
+                    self._board.undoAction()
+                    break
+                self._board.undoAction()
+            return minEval
 
 
             
 
-            
-    MOVE_COST = 1
-    GOAL_ROW = BOARD_N - 1
-    RED_DIRECTIONS: list[Direction] = [Direction.DownRight, Direction.Left, Direction.Right, Direction.DownLeft, Direction.Down]
 
