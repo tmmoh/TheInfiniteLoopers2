@@ -288,7 +288,7 @@ class Agent:
     respond to various Freckers game events.
     """
 
-    DEPTH_LIMIT = 1
+    DEPTH_LIMIT = 3
 
     _color: PlayerColor
     _opponent: PlayerColor
@@ -318,11 +318,6 @@ class Agent:
         # the agent is playing as BLUE or RED. Obviously this won't work beyond
         # the initial moves of the game, so you should use some game playing
         # technique(s) to determine the best action to take.
-        match self._color:
-            case PlayerColor.RED:
-                print("Testing: RED is playing a MOVE action")
-            case PlayerColor.BLUE:
-                print("Testing: BLUE is playing a GROW action")
         
         return self.minimax()
 
