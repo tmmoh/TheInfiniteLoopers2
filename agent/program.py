@@ -351,7 +351,7 @@ class Agent:
 
     def minimax(self) -> Action:
         depth = min(self.DEPTH_LIMIT, Board.MOVE_LIMIT - self._board.roundNumber)
-        best_score = -math.inf
+        best_score = (-math.inf, -math.inf)
         best_move = None
         
         for move in self._board.getMoves(): 
@@ -363,7 +363,7 @@ class Agent:
         return best_move 
     
 
-    def minimax_value(self, depth: int, alpha: float = -math.inf, beta: float = math.inf) -> float:
+    def minimax_value(self, depth: int, alpha: tuple[float] = (-math.inf, -math.inf), beta: tuple[float] = (math.inf, math.inf)) -> tuple[float]:
 
         playerDist = 0
         for frog in self._board._frogs(self._color):
@@ -375,13 +375,13 @@ class Agent:
 
         # Check for winner
         if playerDist == 0 and opponentDist != 0:
-            return math.inf
+            return (math.inf, opponentDist - playerDist)
         
         if opponentDist == 0 and playerDist != 0:
-            return -math.inf
+            return (-math.inf, opponentDist - playerDist)
         
         if depth <= 0:
-            return opponentDist - playerDist
+            return (-playerDist, opponentDist - playerDist)
 
         # keep going with minimax
 
@@ -389,7 +389,7 @@ class Agent:
 
         # Maximising player
         if self._board.currentPlayer == self._color:
-            maxEval = -math.inf
+            maxEval = (-math.inf, -math.inf)
             for move in moveList:
                 self._board.playAction(self._board.currentPlayer, move)
                 eval = self.minimax_value(depth - 1, alpha, beta)
@@ -403,7 +403,7 @@ class Agent:
             return maxEval
 
         else: #Minimising Player - Opponent Move
-            minEval = math.inf
+            minEval = (math.inf, math.inf)
             for move in moveList:
                 self._board.playAction(self._board.currentPlayer, move)
                 eval = self.minimax_value(depth - 1, alpha, beta)
