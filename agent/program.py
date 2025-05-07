@@ -12,7 +12,6 @@ from referee.game.player import Player
 
 
 BOARD_N = 8
-MOVE_LIMIT = 150
 
 
 class Board:
@@ -42,6 +41,8 @@ class Board:
         Direction.Up,
         Direction.UpRight
     ])
+
+    MOVE_LIMIT = 150
 
     roundNumber: int
     currentPlayer: PlayerColor
@@ -227,6 +228,58 @@ class Board:
             case PlayerColor.BLUE:
                 return 0
 
+    def getMoves(self) -> list[Action]:
+        moves: list[Action] = []
+        
+        for frog in self._frogs(self.currentPlayer):
+            for move in self.legalMoves(self.currentPlayer):
+                match move:
+                    case GrowAction():
+                        moves.append(move)
+                    case Direction():
+                        nextCoord: Coord = frog + move
+                        if not Board.inBounds(nextCoord):
+                            continue
+                        
+                        if self._board[nextCoord] == CellState("LilyPad"):
+                            moves.append(MoveAction(frog, move))
+
+            # Calculate jumps and multi-jumps for each frog
+            self.getJumpMoves(moves, frog)
+
+        return moves
+
+
+    # Recursive function
+    def getJumpMoves(self, moves: list[Action], currCoord: Coord, prevCoord: Coord | None = None, prevMove: MoveAction | None = None):
+        for dir in self.legalMoves(self.currentPlayer):
+            match dir:
+                case Direction():
+                    nextCoord: Coord = currCoord + dir
+                    if not Board.inBounds(nextCoord):
+                        continue
+                    
+                    nextCell = self._board[nextCoord].state
+                    jumpCoord = currCoord + dir * 2
+                    jumpCell = self._board[jumpCoord].state
+
+                    if jumpCell == "LilyPad" and nextCell == PlayerColor:
+                        if jumpCoord == prevCoord:
+                            # Don't jump back to where you already were
+                            # Prevents infinite loop
+                            # There are no other ways to create cycles
+                            continue
+                        
+                        moveAction: MoveAction
+                        if not prevMove:
+                            moveAction = MoveAction(currCoord, (dir,))
+                        else:
+                            moveAction = MoveAction(currCoord, prevMove.directions + (dir,))
+
+                        moves.append(moveAction)
+                        
+                        # Copy and recurse
+                        self.getJumpMoves(moves, jumpCoord, prevCoord=currCoord, prevMove=moveAction)
     
 
 class Agent:
@@ -234,6 +287,8 @@ class Agent:
     This class is the "entry point" for your agent, providing an interface to
     respond to various Freckers game events.
     """
+
+    DEPTH_LIMIT = 150
 
     _color: PlayerColor
     _opponent: PlayerColor
@@ -292,9 +347,9 @@ class Agent:
         
         
 
-    def minimax() -> MoveAction:
-        move_couter{'count': MOVE_LIMIT - roundNumber}
-        best_score = -float('inf')
+    def minimax(self) -> MoveAction:
+        depth = min(self.DEPTH_LIMIT, Board.MOVE_LIMIT - self._board.roundNumber)
+        best_score = -math.inf
         best_move = None
         
         for move in moveList: 
@@ -305,38 +360,16 @@ class Agent:
             
         return best_move 
     
-    def minimax_value() -> int:
-        if('''Terminal Node''')
-            '''FUNCTION THAT CHECKS IF ALL FROGS ARE AT FINAL ROW FOR BOTH RED OR BLUE'''
-            return #Evaluate state
-        
-        if('''Move limit reached''')
-            return #Evaluate state
-        
-        if ('''Our move'''): #Maximising Player
-            best_score = -float('inf')
-            for move in moveList:
-                new_state = apply_move
-                score = minimax_value('''Opponent to move''')
-            return best_score
-        else: #Minimising Player - Opponent Move
-            best_score = float('inf')
-            for move in movelist:
-                new_state = apply_move
-                score = minimax_value('''Our move''')
-            
-            return
 
-
-    def minimax_value(self, depth: int, playerFrogs: set[Coord], opponentFrogs: set[Coord], color: PlayerColor) -> int:
+    def minimax_value(self, depth: int, playerFrogs: set[Coord], opponentFrogs: set[Coord], color: PlayerColor) -> float:
 
         playerDist = 0
         for frog in playerFrogs:
-            playerDist += abs(frog.r - self._winRow(self._color))
+            playerDist += abs(frog.r - Board.winRow(self._color))
             
         opponentDist = 0
         for frog in opponentFrogs:
-            opponentDist += abs(frog.r - self._winRow(self._opponent(self._color)))
+            opponentDist += abs(frog.r - Board.winRow(self._color.opponent))
 
         # Check for winner
         if playerDist == 0 and opponentDist != 0:
@@ -375,51 +408,3 @@ class Agent:
     GOAL_ROW = BOARD_N - 1
     RED_DIRECTIONS: list[Direction] = [Direction.DownRight, Direction.Left, Direction.Right, Direction.DownLeft, Direction.Down]
 
-    def getMoves(board: dict[Coord, CellState], redFrogCoords: Coord) -> list[MoveAction]:
-        moves: list[MoveAction] = []
-
-        for dir in RED_DIRECTIONS:
-            # Check that we're in bounds and not wrapping around
-            if redFrogCoords.r + dir.r not in range(BOARD_N):
-                continue
-            if redFrogCoords.c + dir.c not in range(BOARD_N):
-                continue
-
-            nextCoord: Coord = redFrogCoords + dir
-            if board.get(nextCoord, None) == CellState.LILY_PAD:
-                #print(redFrogCoords, nextCoord, board.get(nextCoord, None))
-                # Single, immediate jump
-                moves.append(MoveAction(redFrogCoords, dir))
-
-        # Calculate possible other multi-jumps
-        getJumpMoves(board, moves, redFrogCoords, redFrogCoords, MoveAction(redFrogCoords, []))
-
-        return moves
-
-
-    # Recursive function
-    def getJumpMoves(board: dict[Coord, CellState], moves: list[MoveAction], currCoord: Coord, prevCoord: Coord, move: MoveAction):
-        for dir in RED_DIRECTIONS:
-            # Check that we're in bounds and not wrapping around
-            if currCoord.r + 2 * dir.r not in range(BOARD_N):
-                continue
-            if currCoord.c + 2 * dir.c not in range(BOARD_N):
-                continue
-
-            nextCoord = currCoord + dir
-            nextCell = board.get(nextCoord, None)
-
-            jumpCoord = currCoord + dir * 2
-            jumpCell = board.get(jumpCoord, None)
-            if jumpCell == CellState.LILY_PAD and (nextCell == CellState.BLUE or nextCell == CellState.RED):
-                if jumpCoord == prevCoord:
-                    # Don't jump back to where you already were
-                    # Prevents infinite loop
-                    continue
-
-                moveCopy = deepcopy(move)
-                moveCopy.directions.append(dir)
-                moves.append(moveCopy)
-                
-                # Copy and recurse
-                getJumpMoves(board, moves, jumpCoord, currCoord, moveCopy)
