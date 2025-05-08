@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from referee.game import PlayerColor, Coord, Direction, \
     Action, MoveAction, GrowAction
 from referee.game.board import CellState, BoardMutation, CellMutation
@@ -7,6 +7,16 @@ from math import inf
 
 BOARD_N = 8
 class Board:
+    @dataclass(frozen=True, slots=True, order=True)
+    class StaticEval:
+        pointsAdvantage: int | float
+        distance: int | float
+        distanceAdvantage: int | float
+        history: tuple[int] = tuple()
+
+    MIN_EVAL = StaticEval(-inf, -inf, -inf)
+    MAX_EVAL = StaticEval(inf, inf, inf)
+
     ALL_DIRECTIONS: list[Direction] = [
         Direction.Left, 
         Direction.Right, 
@@ -39,7 +49,12 @@ class Board:
     _board: dict[Coord, CellState]
     _redFrogs: set[Coord]
     _blueFrogs: set[Coord]
-    _history: deque
+    _history: deque[BoardMutation]
+    _redPointHistory: list[int]
+    _bluePointHistory: list[int]
+    _redStaticEval: StaticEval
+    _blueStaticEval: StaticEval
+    winner: PlayerColor | None
 
     def __init__(self):
         self._board: dict[Coord, CellState] = {
@@ -68,6 +83,9 @@ class Board:
         self.currentPlayer: PlayerColor = PlayerColor.RED
         self.roundNumber: int = 1
         self._history: deque[BoardMutation] = deque()
+        self._redPointHistory: list[int] = []
+        self._bluePointHistory: list[int] = []
+        self.winner = None
 
     def playAction(self, color: PlayerColor, action: Action):
         mutation: BoardMutation
@@ -99,6 +117,65 @@ class Board:
         self.roundNumber += 1
         self._history.append(mutation)
 
+        redDist = 0
+        redCount = 0
+        for frog in self._redFrogs:
+            verticalDist = abs(frog.r - Board.winRow(PlayerColor.RED))
+            if verticalDist > 0:
+                horizontalDist = min([
+                    abs(frog.c - cell.c)
+                    for i in range(0, BOARD_N)
+                    if self._board[
+                        cell := Coord(Board.winRow(PlayerColor.RED), i)
+                        ] != PlayerColor.RED
+                ])
+                redDist += max(verticalDist, horizontalDist)
+            else:
+                redCount += 1
+            
+        blueDist = 0
+        blueCount = 0
+        for frog in self._blueFrogs:
+            verticalDist = abs(frog.r - Board.winRow(PlayerColor.BLUE))
+            if verticalDist > 0:
+                horizontalDist = min([
+                    abs(frog.c - cell.c)
+                    for i in range(0, BOARD_N)
+                    if self._board[
+                        cell := Coord(Board.winRow(PlayerColor.BLUE), i)
+                        ] != PlayerColor.BLUE
+                ])
+                blueDist += max(verticalDist, horizontalDist)
+            else:
+                blueCount += 1
+
+        self._redPointHistory.append(-redDist)
+        self._bluePointHistory.append(-blueDist)
+
+        # Check for winner
+        if redDist == 0 and blueDist > 0:
+            self._redStaticEval = Board.StaticEval(inf, blueDist, blueDist)
+            self._blueStaticEval = Board.StaticEval(-inf, -blueDist, -blueDist)
+            self.winner = PlayerColor.RED
+        
+        elif blueDist == 0 and redDist > 0:
+            self._blueStaticEval = Board.StaticEval(inf, redDist, redDist)
+            self._redStaticEval = Board.StaticEval(-inf, -redDist, -redDist)
+            self.winner = PlayerColor.BLUE
+        
+        else:
+            self._redStaticEval = Board.StaticEval(redCount - blueCount,
+                                                   -redDist,
+                                                   blueDist - redDist,
+                                                   tuple(self._redPointHistory))
+            self._blueStaticEval = Board.StaticEval(blueCount - redCount,
+                                                    -blueDist,
+                                                    redDist - blueDist,
+                                                    tuple(self._bluePointHistory))
+            self.winner = None
+        
+
+
     def undoAction(self):
         mutation: BoardMutation = self._history.pop()
 
@@ -119,6 +196,8 @@ class Board:
 
         self.currentPlayer = self.currentPlayer.opponent
         self.roundNumber -= 1
+        self._redPointHistory.pop()
+        self._bluePointHistory.pop()
         
 
     def _frogs(self, color: PlayerColor) -> set[Coord]:
@@ -201,6 +280,13 @@ class Board:
             GrowAction(),
             cell_mutations=set(cellMutations.values())
         )
+    
+    def staticEval(self, color: PlayerColor) -> StaticEval:
+        match color:
+            case PlayerColor.RED:
+                return self._redStaticEval
+            case PlayerColor.BLUE:
+                return self._blueStaticEval
 
         
     @staticmethod
@@ -290,13 +376,5 @@ class Board:
             except ValueError:
                 pass
 
-    @dataclass(frozen=True, slots=True, order=True)
-    class StaticEval:
-        pointsAdvantage: int | float
-        distance: int | float
-        distanceAdvantage: int | float
-
-    MIN_EVAL = StaticEval(-inf, -inf, -inf)
-    MAX_EVAL = StaticEval(inf, inf, inf)
 
 
