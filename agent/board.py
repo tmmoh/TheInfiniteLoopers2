@@ -7,7 +7,7 @@ from math import inf
 
 BOARD_N = 8
 class Board:
-    ALL_DIRECTIONS: set[Direction] = set([
+    ALL_DIRECTIONS: list[Direction] = [
         Direction.Left, 
         Direction.Right, 
         Direction.DownLeft, 
@@ -16,21 +16,21 @@ class Board:
         Direction.UpLeft,
         Direction.Up,
         Direction.UpRight,
-    ])
-    RED_MOVES: set[Direction] = set([
+    ]
+    RED_MOVES: list[Direction] = [
         Direction.Down, 
         Direction.DownLeft, 
         Direction.DownRight,
         Direction.Left, 
         Direction.Right, 
-    ])
-    BLUE_MOVES: set[Direction] = set([
+    ]
+    BLUE_MOVES: list[Direction] = [
         Direction.Up,
         Direction.UpLeft,
         Direction.UpRight,
         Direction.Left,
         Direction.Right,
-    ])
+    ]
 
     MOVE_LIMIT = 150
 
@@ -204,7 +204,7 @@ class Board:
 
         
     @staticmethod
-    def legalMoves(color: PlayerColor) -> set[Direction]:
+    def legalMoves(color: PlayerColor) -> list[Direction]:
         match color:
             case PlayerColor.RED:
                 return Board.RED_MOVES
@@ -226,9 +226,6 @@ class Board:
 
     def getMoves(self) -> list[Action]:
         moves: list[Action] = []
-        mutation: BoardMutation = self._growAction(self.currentPlayer)
-        if len(mutation.cell_mutations) > 0:
-            moves.append(GrowAction())
 
         for frog in self._frogs(self.currentPlayer):
             # Calculate jumps and multi-jumps for each frog
@@ -246,6 +243,9 @@ class Board:
                 except ValueError:
                     pass
 
+        mutation: BoardMutation = self._growAction(self.currentPlayer)
+        if len(mutation.cell_mutations) > 0:
+            moves.append(GrowAction())
 
         return moves
 

@@ -22,7 +22,7 @@ class Agent:
 
     _color: PlayerColor
     _opponent: PlayerColor
-    _legalMoves: set[Direction]
+    _legalMoves: list[Direction]
     _board: Board
 
     def __init__(self, color: PlayerColor, **referee: dict):
