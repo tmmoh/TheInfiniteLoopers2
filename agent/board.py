@@ -29,10 +29,10 @@ class Board:
     ]
     RED_MOVES: list[Direction] = [
         Direction.Down, 
-        Direction.DownLeft, 
         Direction.DownRight,
-        Direction.Left, 
+        Direction.DownLeft, 
         Direction.Right, 
+        Direction.Left, 
     ]
     BLUE_MOVES: list[Direction] = [
         Direction.Up,
