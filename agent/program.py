@@ -3,284 +3,13 @@
 
 from referee.game import PlayerColor, Coord, Direction, \
     Action, MoveAction, GrowAction
-from referee.game import player
-from referee.game.board import CellState, BoardMutation, CellMutation
-from copy import deepcopy
-from collections import deque
-import math
-
-from referee.game.player import Player
+from .board import Board
+from math import floor, inf
 
 
 BOARD_N = 8
 
 
-class Board:
-    ALL_DIRECTIONS: set[Direction] = set([
-        Direction.Left, 
-        Direction.Right, 
-        Direction.DownLeft, 
-        Direction.Down, 
-        Direction.DownRight,
-        Direction.UpLeft,
-        Direction.Up,
-        Direction.UpRight,
-    ])
-    RED_MOVES: set[Direction] = set([
-        Direction.Down, 
-        Direction.DownLeft, 
-        Direction.DownRight,
-        Direction.Left, 
-        Direction.Right, 
-    ])
-    BLUE_MOVES: set[Direction] = set([
-        Direction.Up,
-        Direction.UpLeft,
-        Direction.UpRight,
-        Direction.Left,
-        Direction.Right,
-    ])
-
-    MOVE_LIMIT = 150
-
-    roundNumber: int
-    currentPlayer: PlayerColor
-    _board: dict[Coord, CellState]
-    _redFrogs: set[Coord]
-    _blueFrogs: set[Coord]
-    _history: deque
-
-    def __init__(self):
-        self._board: dict[Coord, CellState] = {
-            Coord(r, c): CellState() 
-            for r in range(BOARD_N) 
-            for c in range(BOARD_N)
-        }
-
-        self._redFrogs = set()
-        self._blueFrogs = set()
-
-        for r in [0, BOARD_N - 1]:
-            for c in [0, BOARD_N - 1]:
-                self._board[Coord(r, c)] = CellState("LilyPad")
-
-        for r in [1, BOARD_N - 2]:
-            for c in range(1, BOARD_N - 1):
-                self._board[Coord(r, c)] = CellState("LilyPad")
-            
-        for c in range(1, BOARD_N - 1):
-            self._board[Coord(0, c)] = CellState(PlayerColor.RED)
-            self._redFrogs.add(Coord(0, c))
-            self._board[Coord(BOARD_N - 1, c)] = CellState(PlayerColor.BLUE)
-            self._blueFrogs.add(Coord(BOARD_N - 1, c))
-
-        self.currentPlayer: PlayerColor = PlayerColor.RED
-        self.roundNumber: int = 1
-        self._history: deque[BoardMutation] = deque()
-
-    def playAction(self, color: PlayerColor, action: Action):
-        mutation: BoardMutation
-        match action:
-            case MoveAction(coord, dirs):
-                mutation = self._moveAction(color, action)
-            case GrowAction():
-                mutation = self._growAction(color)
-            case _:
-                raise ValueError(f"Unknown action type: {action}")
-
-        for mut in mutation.cell_mutations:
-            match self._board[mut.cell].state:
-                case PlayerColor.RED:
-                    self._redFrogs.remove(mut.cell)
-                case PlayerColor.BLUE:
-                    self._blueFrogs.remove(mut.cell)
-
-            self._board[mut.cell] = mut.next
-
-            match self._board[mut.cell].state:
-                case PlayerColor.RED:
-                    self._redFrogs.add(mut.cell)
-                case PlayerColor.BLUE:
-                    self._blueFrogs.add(mut.cell)
-
-        
-        self.currentPlayer = self.currentPlayer.opponent
-        self.roundNumber += 1
-        self._history.append(mutation)
-
-    def undoAction(self):
-        mutation: BoardMutation = self._history.pop()
-
-        for mut in mutation.cell_mutations:
-            match self._board[mut.cell].state:
-                case PlayerColor.RED:
-                    self._redFrogs.remove(mut.cell)
-                case PlayerColor.BLUE:
-                    self._blueFrogs.remove(mut.cell)
-
-            self._board[mut.cell] = mut.prev
-
-            match self._board[mut.cell].state:
-                case PlayerColor.RED:
-                    self._redFrogs.add(mut.cell)
-                case PlayerColor.BLUE:
-                    self._blueFrogs.add(mut.cell)
-
-        self.currentPlayer = self.currentPlayer.opponent
-        self.roundNumber -= 1
-        
-
-    def _frogs(self, color: PlayerColor) -> set[Coord]:
-        match color:
-            case PlayerColor.RED:
-                return self._redFrogs
-            case PlayerColor.BLUE:
-                return self._blueFrogs
-    
-    def _isFrogCell(self, coord: Coord) -> bool:
-        return (self._board[coord].state == PlayerColor.BLUE 
-            or self._board[coord].state == PlayerColor.RED)
-
-    def _isPadCell(self, coord: Coord) -> bool:
-        return self._board[coord].state == "LilyPad"
-
-    def _isEmptyCell(self, coord: Coord) -> bool:
-        return self._board[coord].state == None
-
-    def _moveAction(self, color: PlayerColor, action: MoveAction) -> BoardMutation:
-        startCoord = action.coord
-        endCoord = startCoord
-
-        for dir in action.directions:
-            endCoord += dir
-            if self._isFrogCell(endCoord):
-                endCoord += dir
-
-        '''
-        self._board[endCoord] = self._board.pop(startCoord)
-        self._frogs(color).remove(startCoord) 
-        self._frogs(color).add(endCoord) 
-        '''
-
-        cellMutations = {
-            startCoord: CellMutation(
-                startCoord,
-                self._board[startCoord],
-                CellState(None)
-            ),
-            endCoord: CellMutation(
-                endCoord,
-                self._board[endCoord],
-                self._board[startCoord]
-            )
-        }
-
-        return BoardMutation(
-            action,
-            cell_mutations=set(cellMutations.values())
-        )
-
-
-
-    def _growAction(self, color: PlayerColor) -> BoardMutation: 
-        cellMutations = {}
-        neighbour_cells: set[Coord] = set()
-
-        for cell in self._frogs(color):
-            for direction in Direction:
-                try:
-                    neighbour = cell + direction
-                    neighbour_cells.add(neighbour)
-                except ValueError:
-                    pass
-
-        for cell in neighbour_cells:
-            if self._isEmptyCell(cell):
-                cellMutations[cell] = CellMutation(
-                    cell,
-                    self._board[cell],
-                    CellState("LilyPad")
-                )
-
-        return BoardMutation(
-            GrowAction(),
-            cell_mutations=set(cellMutations.values())
-        )
-
-        
-    @staticmethod
-    def legalMoves(color: PlayerColor) -> set[Direction]:
-        match color:
-            case PlayerColor.RED:
-                return Board.RED_MOVES
-            case PlayerColor.BLUE:
-                return Board.BLUE_MOVES
-
-    @staticmethod
-    def inBounds(coord: Coord) -> bool:
-        return (coord.r >= 0 and coord.r < BOARD_N 
-            and coord.c >= 0 and coord.c < BOARD_N)
-
-    @staticmethod
-    def winRow(color: PlayerColor) -> int:
-        match color:
-            case PlayerColor.RED:
-                return BOARD_N - 1
-            case PlayerColor.BLUE:
-                return 0
-
-    def getMoves(self) -> list[Action]:
-        moves: list[Action] = []
-        mutation: BoardMutation = self._growAction(self.currentPlayer)
-        if len(mutation.cell_mutations) > 0:
-            moves.append(GrowAction())
-
-        for frog in self._frogs(self.currentPlayer):
-            # Calculate jumps and multi-jumps for each frog
-            # First because they're likely better moves, helps with pruning
-            self.getJumpMoves(moves, frog)
-
-        for move in self.legalMoves(self.currentPlayer):
-            # Order by directions then by frogs because direction is more
-            # valuable, should help with pruning
-            for frog in self._frogs(self.currentPlayer):
-                try:
-                    nextCoord: Coord = frog + move
-                    if self._isPadCell(nextCoord):
-                        moves.append(MoveAction(frog, move))
-                except ValueError:
-                    pass
-
-
-        return moves
-
-
-    # Recursive function
-    def getJumpMoves(self, moves: list[Action], currCoord: Coord, prevCoord: Coord | None = None, prevMove: MoveAction | None = None):
-        for dir in self.legalMoves(self.currentPlayer):
-            try:
-                nextCoord: Coord = currCoord + dir
-                jumpCoord = currCoord + dir * 2
-
-                if self._isPadCell(jumpCoord) and self._isFrogCell(nextCoord):
-                    if jumpCoord == prevCoord:
-                        # Don't jump back to where you already were
-                        # Prevents infinite loop
-                        # There are no other ways to create cycles
-                        continue
-                    
-                    moveAction: MoveAction
-                    if not prevMove:
-                        moveAction = MoveAction(currCoord, (dir,))
-                    else:
-                        moveAction = MoveAction(prevMove.coord, prevMove.directions + (dir,))
-
-                    moves.append(moveAction)
-                    
-                    # Copy and recurse
-                    self.getJumpMoves(moves, jumpCoord, prevCoord=currCoord, prevMove=moveAction)
-            except ValueError:
-                pass
 
 
 class Agent:
@@ -293,7 +22,7 @@ class Agent:
 
     _color: PlayerColor
     _opponent: PlayerColor
-    _legalMoves: set[Direction | GrowAction]
+    _legalMoves: set[Direction]
     _board: Board
 
     def __init__(self, color: PlayerColor, **referee: dict):
@@ -305,11 +34,6 @@ class Agent:
         self._opponent = color.opponent
         self._board = Board()
         self._legalMoves = Board.legalMoves(self._color)
-
-        
-        
-
-        
 
 
     def action(self, **referee: dict) -> Action:
@@ -347,22 +71,21 @@ class Agent:
                 raise ValueError(f"Unknown action type: {action}")
         
         self._board.playAction(color, action)
-
-
-            
         
         
 
     def minimax(self) -> Action:
-        depth = min(1 + math.floor(self._board.roundNumber ** (1/4)), Board.MOVE_LIMIT - self._board.roundNumber)
-        best_score = (-math.inf, -math.inf, -math.inf)
+        depth = min(1 + floor(self._board.roundNumber ** (1/4)), 
+                    Board.MOVE_LIMIT - self._board.roundNumber)
+        best_score = Board.MIN_EVAL
         best_move = None
 
         moveList = self._board.getMoves()
         print(*moveList)
         for move in moveList: 
             with open("log.txt", mode="a") as fp:
-                fp.write(f'Round {self._board.roundNumber}: Searching through move {move}\n')
+                fp.write(f'Round {self._board.roundNumber}: Searching through \
+                         move {move}\n')
                 fp.write(f'{self._color} to play\n')
             '''
             print("Searching through move", move)
@@ -385,18 +108,25 @@ class Agent:
         return best_move 
     
     indent = 1
-    def minimax_value(self, depth: int, alpha: tuple[float] = (-math.inf, -math.inf, -math.inf), beta: tuple[float] = (math.inf, math.inf, math.inf)) -> tuple[float]:
+    def minimax_value(
+            self, 
+            depth: int, 
+            alpha: Board.StaticEval = Board.MIN_EVAL, 
+            beta: Board.StaticEval = Board.MAX_EVAL
+            ) -> Board.StaticEval:
 
         playerDist = 0
         playerCount = 0
         for frog in self._board._frogs(self._color):
             verticalDist = abs(frog.r - Board.winRow(self._color))
             if verticalDist > 0:
-                cells = [Coord(Board.winRow(self._color), i) for i in range(0, BOARD_N)]
-                horizontalDist = BOARD_N - 1
-                for cell in cells:
-                    if self._board._board[cell].state != self._color:
-                        horizontalDist = min(horizontalDist, abs(frog.c - cell.c))
+                horizontalDist = min([
+                    abs(frog.c - cell.c)
+                    for i in range(0, BOARD_N)
+                    if self._board._board[
+                        cell := Coord(Board.winRow(self._color), i)
+                        ] != self._color
+                ])
                 playerDist += max(verticalDist, horizontalDist)
             else:
                 playerCount += 1
@@ -406,24 +136,28 @@ class Agent:
         for frog in self._board._frogs(self._opponent):
             verticalDist = abs(frog.r - Board.winRow(self._color.opponent))
             if verticalDist > 0:
-                cells = [Coord(Board.winRow(self._color.opponent), i) for i in range(0, BOARD_N)]
-                horizontalDist = BOARD_N - 1
-                for cell in cells:
-                    if self._board._board[cell].state != self._color.opponent:
-                        horizontalDist = min(horizontalDist, abs(frog.c - cell.c))
+                horizontalDist = min([
+                    abs(frog.c - cell.c)
+                    for i in range(0, BOARD_N)
+                    if self._board._board[
+                        cell := Coord(Board.winRow(self._color.opponent), i)
+                        ] != self._color.opponent
+                ])
                 opponentDist += max(verticalDist, horizontalDist)
             else:
                 opponentCount += 1
 
         # Check for winner
         if playerDist == 0 and opponentDist > 0:
-            return (math.inf, opponentDist, opponentDist - playerDist)
+            return Board.StaticEval(inf, opponentDist, opponentDist)
         
         if opponentDist == 0 and playerDist > 0:
-            return (-math.inf, -playerDist, opponentDist - playerDist)
+            return Board.StaticEval(-inf, -playerDist, -playerDist)
         
         if depth <= 0:
-            return (playerCount - opponentCount, -playerDist, opponentDist - playerDist)
+            return Board.StaticEval(playerCount - opponentCount,
+                                    -playerDist, 
+                                    opponentDist - playerDist)
 
         # keep going with minimax
 
@@ -431,26 +165,33 @@ class Agent:
 
         self.indent -= 1
         with open("log.txt", mode="a") as fp:
-            fp.write('    ' * self.indent + f'{self._board.currentPlayer} selecting best move\n')
+            fp.write('    ' * self.indent + f'{self._board.currentPlayer} \
+                    selecting best move\n')
         self.indent += 1
         # print(self._board.currentPlayer, "selecting best move")
         # Maximising player
         if self._board.currentPlayer == self._color:
-            maxEval = (-math.inf, -math.inf, -math.inf)
+            maxEval = Board.MIN_EVAL
             for move in moveList:
                 with open("log.txt", mode="a") as fp:
                     fp.write('    ' * self.indent + f'Trying {move}\n')
+
                 self._board.playAction(self._board.currentPlayer, move)
-                self.indent += 1
                 eval = self.minimax_value(depth - 1, alpha, beta)
+
                 with open("log.txt", mode="a") as fp:
-                    fp.write('    ' * self.indent + f'{move} with score {eval}\n')
-                # print(eval, move)
+                    self.indent += 1
+                    fp.write('    ' * self.indent + f'{move} with \
+                            score {eval}\n')
+                    # print(eval, move)
+
                 maxEval = max(maxEval, eval)
                 alpha = max(alpha, eval)
-                self.indent -= 1
+
                 with open("log.txt", mode="a") as fp:
+                    self.indent -= 1
                     fp.write('    ' * self.indent + f'Undoing {move}\n')
+
                 self._board.undoAction()
                 if (beta <= alpha):
                     # Prune
@@ -458,27 +199,35 @@ class Agent:
             return maxEval
 
         else: #Minimising Player - Opponent Move
-            minEval = (math.inf, math.inf, math.inf)
+            minEval = Board.MAX_EVAL
             for move in moveList:
                 with open("log.txt", mode="a") as fp:
                     fp.write(f'Trying {move}\n')
+
                 self._board.playAction(self._board.currentPlayer, move)
-                self.indent += 1
                 eval = self.minimax_value(depth - 1, alpha, beta)
+
                 with open("log.txt", mode="a") as fp:
-                    fp.write('    ' * self.indent + f'{move} with score {eval}\n')
-                # print(eval, move)
+                    self.indent += 1
+                    fp.write('    ' * self.indent + f'{move} with \
+                            score {eval}\n')
+                    # print(eval, move)
+
                 minEval = min(minEval, eval)
                 beta = min(beta, eval)
-                self.indent -= 1
+
                 with open("log.txt", mode="a") as fp:
+                    self.indent -= 1
                     fp.write('    ' * self.indent + f'Undoing {move}\n')
+
                 self._board.undoAction()
                 if (beta <= alpha):
                     # Prune
                     break
             return minEval
-        
+
+
+
 
 '''
 class MCTS_node:
