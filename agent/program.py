@@ -83,10 +83,12 @@ class Agent:
         moveList = self._board.getMoves()
         print(*moveList)
         for move in moveList: 
+            '''j
             with open("log.txt", mode="a", encoding="utf-8") as fp:
                 fp.write(f'Round {self._board.roundNumber}: Searching through \
                          move {move}\n')
                 fp.write(f'{self._color} to play\n')
+                '''
             '''
             print("Searching through move", move)
             print(self._color, "to play")
@@ -96,8 +98,10 @@ class Agent:
             self._board.playAction(self._board.currentPlayer, move)
             score = self.minimax_value(depth)
             self.indent -= 1
+            '''j
             with open("log.txt", mode="a", encoding="utf-8") as fp:
                 fp.write(f'Overall score of {score} for move {move}\n')
+                '''
             #print("Overall Score of", score, move)
             if(score > best_score):
                 best_score = score
@@ -128,33 +132,41 @@ class Agent:
         moveList = self._board.getMoves()
 
         self.indent -= 1
+        '''
         with open("log.txt", mode="a", encoding="utf-8") as fp:
             fp.write('    ' * self.indent + f'{self._board.currentPlayer} \
                     selecting best move\n')
+            '''
         self.indent += 1
         # print(self._board.currentPlayer, "selecting best move")
         # Maximising player
         if self._board.currentPlayer == self._color:
             maxEval = Board.MIN_EVAL
             for move in moveList:
+                '''
                 with open("log.txt", mode="a", encoding="utf-8") as fp:
                     fp.write('    ' * self.indent + f'Trying {move}\n')
+                    '''
 
                 self._board.playAction(self._board.currentPlayer, move)
                 eval = self.minimax_value(depth - 1, alpha, beta)
 
+                '''
                 with open("log.txt", mode="a", encoding="utf-8") as fp:
                     self.indent += 1
                     fp.write('    ' * self.indent + f'{move} with \
                             score {eval}\n')
                     # print(eval, move)
+                    '''
 
                 maxEval = max(maxEval, eval)
                 alpha = max(alpha, eval)
 
+                '''
                 with open("log.txt", mode="a", encoding="utf-8") as fp:
                     self.indent -= 1
                     fp.write('    ' * self.indent + f'Undoing {move}\n')
+                    '''
 
                 self._board.undoAction()
                 if (beta <= alpha):
@@ -165,24 +177,30 @@ class Agent:
         else: #Minimising Player - Opponent Move
             minEval = Board.MAX_EVAL
             for move in moveList:
+                '''
                 with open("log.txt", mode="a", encoding="utf-8") as fp:
                     fp.write(f'Trying {move}\n')
+                    '''
 
                 self._board.playAction(self._board.currentPlayer, move)
                 eval = self.minimax_value(depth - 1, alpha, beta)
 
+                '''
                 with open("log.txt", mode="a", encoding="utf-8") as fp:
                     self.indent += 1
                     fp.write('    ' * self.indent + f'{move} with \
                             score {eval}\n')
                     # print(eval, move)
+                    '''
 
                 minEval = min(minEval, eval)
                 beta = min(beta, eval)
 
+                '''
                 with open("log.txt", mode="a", encoding="utf-8") as fp:
                     self.indent -= 1
                     fp.write('    ' * self.indent + f'Undoing {move}\n')
+                    '''
 
                 self._board.undoAction()
                 if (beta <= alpha):
