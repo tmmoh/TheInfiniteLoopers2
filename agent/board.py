@@ -108,7 +108,7 @@ class Board:
         for r in range(BOARD_N):
             for c in range(BOARD_N):
                 if self._cell_occupied(Coord(r, c)):
-                    state = self._state[Coord(r, c)].state
+                    state = self._board[Coord(r, c)].state
                     if state == "LilyPad":
                         text = "*"
                     elif state == PlayerColor.RED or state == PlayerColor.BLUE:
@@ -125,6 +125,9 @@ class Board:
                 output += " "
             output += "\n"
         return output
+
+    def _cell_occupied(self, coord: Coord) -> bool:
+        return self._board[coord].state != None
 
     def playAction(self, color: PlayerColor, action: Action):
         mutation: BoardMutation
@@ -212,6 +215,14 @@ class Board:
                                                     redDist - blueDist,
                                                     tuple(self._bluePointHistory))
             self.winner = None
+            
+            if self.roundNumber > Board.MOVE_LIMIT:
+                if redCount == blueCount:
+                    self.winner = None
+                elif redCount > blueCount:
+                    self.winner = PlayerColor.RED
+                else:
+                    self.winner = PlayerColor.BLUE
         
 
 

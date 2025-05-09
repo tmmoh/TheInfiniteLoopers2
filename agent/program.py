@@ -250,8 +250,8 @@ class Agent:
     def MCTS(self, remaingTime: int) -> Action:
         end = time() + remaingTime / (Board.MOVE_LIMIT - self._board.roundNumber)
         end = time() + 4.5
-        print(f'Starting MCTS from board state below')
-        print(self._board.render(use_color=True))
+        #print(f'Starting MCTS from board state below')
+        #print(self._board.render(use_color=True))
         while time() < end:
             leaf = self.MCTS_Select()
             child = self.MCTS_Expand(leaf)
@@ -264,9 +264,9 @@ class Agent:
                 child = child.parent
 
         r = self._root
-        print(f'Ended MCTS on board state below')
-        print(self._board.render(use_color=True))
-        print([r.action, r.color, r.visits, r.wins, r.draws])
+        #print(f'Ended MCTS on board state below')
+        #print(self._board.render(use_color=True))
+        #print([r.action, r.color, r.visits, r.wins, r.draws])
         #return max(self._root.children.items(), key=lambda item: item[1].visits)[0]
         return max(self._root.children.items(), key=lambda item: item[1].wins / item[1].visits)[0]
    
@@ -278,7 +278,7 @@ class Agent:
             node = node.best_child()
             self._board.playAction(self._board.currentPlayer, node.action)
         
-        print(f'Selected leaf node {vars(node)}')
+        #print(f'Selected leaf node {vars(node)}')
         return node
     
     def MCTS_Expand(self, node: MCTS_Node) -> MCTS_Node:
@@ -292,19 +292,20 @@ class Agent:
         node.children[action] = child
         self._board.playAction(self._board.currentPlayer, child.action)
 
-        print(f'Expanded child node {vars(child)}')
+        #print(f'Expanded child node {vars(child)}')
         return child or node
 
     
     def MCTS_Simulate(self, board: Board, child: MCTS_Node) -> PlayerColor | None:
-        print(f'Simulating from board state below')
-        print(board.render(use_color=True))
+        #print(f'Simulating from board state below')
+        #print(board.render(use_color=True))
         while not board.gameOver():
             moves = board.getMoves()
             move = choice(moves)
             board.playAction(board.currentPlayer, move)
         
-        print(f'The Winner was {board.winner}')
+        #print(f'The Winner was {board.winner}')
+        #print(board.render(use_color=True))
         return board.winner
 
     def MCTS_Backpropogate(self, node: MCTS_Node, result: PlayerColor | None):
