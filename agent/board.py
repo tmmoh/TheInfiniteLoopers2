@@ -88,6 +88,43 @@ class Board:
         self._bluePointHistory: list[int] = []
         self.winner = None
     
+    def render(self, use_color: bool=False, use_unicode: bool=False) -> str:
+        """
+        Returns a visualisation of the game board as a multiline string, with
+        optional ANSI color codes and Unicode characters (if applicable).
+        """
+        def apply_ansi(str, bold=True, color=None):
+            bold_code = "\033[1m" if bold else ""
+            color_code = ""
+            if color == "RED":
+                color_code = "\033[31m"
+            if color == "BLUE":
+                color_code = "\033[34m"
+            if color == "LilyPad":
+                color_code = "\033[32m"
+            return f"{bold_code}{color_code}{str}\033[0m"
+
+        output = ""
+        for r in range(BOARD_N):
+            for c in range(BOARD_N):
+                if self._cell_occupied(Coord(r, c)):
+                    state = self._state[Coord(r, c)].state
+                    if state == "LilyPad":
+                        text = "*"
+                    elif state == PlayerColor.RED or state == PlayerColor.BLUE:
+                        text = "R" if state == PlayerColor.RED else "B"
+                    else:
+                        text = " "
+
+                    if use_color:
+                        output += apply_ansi(text, color=str(state), bold=False)
+                    else:
+                        output += text
+                else:
+                    output += "."
+                output += " "
+            output += "\n"
+        return output
 
     def playAction(self, color: PlayerColor, action: Action):
         mutation: BoardMutation

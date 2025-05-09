@@ -26,10 +26,10 @@ class MCTS_Node:
     def fully_expanded(self, legal_actions):
         return all(action in self.children for action in legal_actions)
     
-    def best_child(self, c_param=1):
+    def best_child(self, c_param=sqrt(2)):
         return max(
             self.children.values(),
-            key=lambda child: (child.wins + child.draws / child.visits) + c_param * sqrt(log(self.visits) / child.visits)
+            key=lambda child: (child.wins / child.visits) + c_param * sqrt(log(self.visits) / child.visits)
         )
         ## INCLUDING DRAWS AS WINS
 
@@ -70,9 +70,19 @@ class Agent:
         # the agent is playing as BLUE or RED. Obviously this won't work beyond
         # the initial moves of the game, so you should use some game playing
         # technique(s) to determine the best action to take.
+
         remainingTime = referee["time_remaining"]
-        return self.MCTS(remainingTime)
-        return self.minimax()
+        print(referee)
+        print(remainingTime)
+        r = self._root
+        print([r.action, r.color, r.visits, r.wins, r.draws])
+        match self._color:
+            case PlayerColor.RED:
+                return self.MCTS(remainingTime)
+            case PlayerColor.BLUE:
+                return self.MCTS(remainingTime)
+                return self.minimax()
+
 
     def update(self, color: PlayerColor, action: Action, **referee: dict):
         """
@@ -239,6 +249,9 @@ class Agent:
 
     def MCTS(self, remaingTime: int) -> Action:
         end = time() + remaingTime / (Board.MOVE_LIMIT - self._board.roundNumber)
+        end = time() + 4.5
+        print(f'Starting MCTS from board state below')
+        print(self._board.render(use_color=True))
         while time() < end:
             leaf = self.MCTS_Select()
             child = self.MCTS_Expand(leaf)
@@ -246,19 +259,26 @@ class Agent:
             self.MCTS_Backpropogate(child, result)
 
             # Undo board for selection
-            while leaf != self._root:
+            while child != self._root:
                 self._board.undoAction()
-                leaf = leaf.parent
+                child = child.parent
 
-        return max(self._root.children.items(), key=lambda item: item[1].visits)[0]   
+        r = self._root
+        print(f'Ended MCTS on board state below')
+        print(self._board.render(use_color=True))
+        print([r.action, r.color, r.visits, r.wins, r.draws])
+        #return max(self._root.children.items(), key=lambda item: item[1].visits)[0]
+        return max(self._root.children.items(), key=lambda item: item[1].wins / item[1].visits)[0]
+   
 
 
     def MCTS_Select(self) -> MCTS_Node:
         node = self._root
         while node.fully_expanded(self._board.getMoves()):
             node = node.best_child()
-            self._board.playAction(node.action)
+            self._board.playAction(self._board.currentPlayer, node.action)
         
+        print(f'Selected leaf node {vars(node)}')
         return node
     
     def MCTS_Expand(self, node: MCTS_Node) -> MCTS_Node:
@@ -270,17 +290,21 @@ class Agent:
         action = choice(untried)
         child = MCTS_Node(node.color.opponent, parent=node, action=action)
         node.children[action] = child
+        self._board.playAction(self._board.currentPlayer, child.action)
 
-        return child
+        print(f'Expanded child node {vars(child)}')
+        return child or node
 
     
     def MCTS_Simulate(self, board: Board, child: MCTS_Node) -> PlayerColor | None:
-        board.playAction(board.currentPlayer, child.action)
+        print(f'Simulating from board state below')
+        print(board.render(use_color=True))
         while not board.gameOver():
             moves = board.getMoves()
             move = choice(moves)
             board.playAction(board.currentPlayer, move)
         
+        print(f'The Winner was {board.winner}')
         return board.winner
 
     def MCTS_Backpropogate(self, node: MCTS_Node, result: PlayerColor | None):
@@ -292,7 +316,7 @@ class Agent:
                     node.draws += 1
                 case node.color:
                     node.wins += 1
-                case node.color._opponent:
+                case node.color.opponent:
                     pass
             
             node = node.parent
