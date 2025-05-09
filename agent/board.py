@@ -4,6 +4,7 @@ from referee.game import PlayerColor, Coord, Direction, \
 from referee.game.board import CellState, BoardMutation, CellMutation
 from collections import deque
 from math import inf
+from copy import deepcopy
 
 BOARD_N = 8
 class Board:
@@ -86,6 +87,7 @@ class Board:
         self._redPointHistory: list[int] = []
         self._bluePointHistory: list[int] = []
         self.winner = None
+    
 
     def playAction(self, color: PlayerColor, action: Action):
         mutation: BoardMutation
@@ -375,6 +377,9 @@ class Board:
                             )
             except ValueError:
                 pass
+        
+    def gameOver(self) -> bool:
+        return self.winner != None or self.roundNumber > self.MOVE_LIMIT
 
 
 

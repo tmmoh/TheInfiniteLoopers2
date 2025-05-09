@@ -4,12 +4,34 @@
 from referee.game import PlayerColor, Coord, Direction, \
     Action, MoveAction, GrowAction
 from .board import Board
-from math import floor, inf
+from math import floor, sqrt, log
+from random import choice
+from time import time
+from copy import deepcopy
 
 
 BOARD_N = 8
 
 
+class MCTS_Node:
+    def __init__(self, color: PlayerColor, parent: 'MCTS_Node' = None, action: Action = None):
+        self.parent: MCTS_Node = parent
+        self.action: Action = action
+        self.color: PlayerColor = color
+        self.children: dict[Action, MCTS_Node] = {}
+        self.visits = 0
+        self.wins = 0
+        self.draws = 0
+
+    def fully_expanded(self, legal_actions):
+        return all(action in self.children for action in legal_actions)
+    
+    def best_child(self, c_param=1):
+        return max(
+            self.children.values(),
+            key=lambda child: (child.wins + child.draws / child.visits) + c_param * sqrt(log(self.visits) / child.visits)
+        )
+        ## INCLUDING DRAWS AS WINS
 
 
 class Agent:
@@ -24,6 +46,7 @@ class Agent:
     _opponent: PlayerColor
     _legalMoves: list[Direction]
     _board: Board
+    _root: MCTS_Node
 
     def __init__(self, color: PlayerColor, **referee: dict):
         """
@@ -34,6 +57,7 @@ class Agent:
         self._opponent = color.opponent
         self._board = Board()
         self._legalMoves = Board.legalMoves(self._color)
+        self._root = MCTS_Node(self._board.currentPlayer.opponent)
 
 
     def action(self, **referee: dict) -> Action:
@@ -46,7 +70,8 @@ class Agent:
         # the agent is playing as BLUE or RED. Obviously this won't work beyond
         # the initial moves of the game, so you should use some game playing
         # technique(s) to determine the best action to take.
-        
+        remainingTime = referee["time_remaining"]
+        return self.MCTS(remainingTime)
         return self.minimax()
 
     def update(self, color: PlayerColor, action: Action, **referee: dict):
@@ -71,6 +96,9 @@ class Agent:
                 raise ValueError(f"Unknown action type: {action}")
         
         self._board.playAction(color, action)
+        self._root = self._root.children.get(action, None)
+        if self._root == None:
+            self._root = MCTS_Node(self._board.currentPlayer.opponent)
         
         
 
@@ -209,83 +237,62 @@ class Agent:
             return minEval
 
 
+    def MCTS(self, remaingTime: int) -> Action:
+        end = time() + remaingTime / (Board.MOVE_LIMIT - self._board.roundNumber)
+        while time() < end:
+            leaf = self.MCTS_Select()
+            child = self.MCTS_Expand(leaf)
+            result = self.MCTS_Simulate(deepcopy(self._board), child)
+            self.MCTS_Backpropogate(child, result)
+
+            # Undo board for selection
+            while leaf != self._root:
+                self._board.undoAction()
+                leaf = leaf.parent
+
+        return max(self._root.children.items(), key=lambda item: item[1].visits)[0]   
 
 
-'''
-class MCTS_node:
-    def __init__(self, parent=None, action: Action = None):
-        self.parent = parent
-        self.action = action
-        self.children: list[MCTS_node] = []
-        self.visits = 0
-        self.wins = 0
-        self.untried_actions = board.getMoves() #How to store board ??
-
-    def fully_expanded(self):
-        return len(self.untried_actions) == 0
-    
-    def best_child(self, c_param=1):
-        choices = [
-            (child.wins / child.visits) + c_param * math.sqrt(math.log(self.visits) / child.visits)
-            for child in self.children
-        ]
-        return self.children[choices.index(max(choices))]
-    
-    def expand(self):
-        action = self.untried_actions.pop()
-        #play the action
-        child_node = MCTS_node(parent=self, action=action)
-        self.children.append(child_node)
-        return child_node
-    
-    def backpropagate(self, result):
-        self.visits += 1
-        self.wins += result
-        if self.parent:
-            self.parent.backpropagate(-result)
-
-
-class Agent_MCTS:
-
-    def MCTS(self) -> Action:
-        root = MCTS_node()
-
-        while(''Iteration time left''):
-            node = root
-
-            #Selection
-            while node.fully_expanded() and node.children:
-                node = best_child()
-
-            #Expansion 
-            if not node.fully_expanded():
-                #Expand the node
-                node = node.expand()
-
-            #Simulation
-            result = self.simulation()
-
-            #Backpropagation
-            backpropagate(result)
+    def MCTS_Select(self) -> MCTS_Node:
+        node = self._root
+        while node.fully_expanded(self._board.getMoves()):
+            node = node.best_child()
+            self._board.playAction(node.action)
         
-    return
-
-    def simulation():
-        while(''Simulation Limit''):
-            #Make random move
-            
-            #Check win condition
-            #If we win, return 1
-            #If opponent win, return -1
-            return
-
-        #If simulation time exceeded return no color (Draw/unfinished)
-    return None   
+        return node
     
-    '''
+    def MCTS_Expand(self, node: MCTS_Node) -> MCTS_Node:
+        
+        legal_actions = self._board.getMoves()
+        untried = [move for move in legal_actions if move not in node.children]
+
+        # Choose randomly
+        action = choice(untried)
+        child = MCTS_Node(node.color.opponent, parent=node, action=action)
+        node.children[action] = child
+
+        return child
 
     
+    def MCTS_Simulate(self, board: Board, child: MCTS_Node) -> PlayerColor | None:
+        board.playAction(board.currentPlayer, child.action)
+        while not board.gameOver():
+            moves = board.getMoves()
+            move = choice(moves)
+            board.playAction(board.currentPlayer, move)
+        
+        return board.winner
 
+    def MCTS_Backpropogate(self, node: MCTS_Node, result: PlayerColor | None):
+        while node != None:
+            node.visits += 1
+
+            match result:
+                case None:
+                    node.draws += 1
+                case node.color:
+                    node.wins += 1
+                case node.color._opponent:
+                    pass
             
-
-
+            node = node.parent
