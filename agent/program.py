@@ -5,7 +5,7 @@ from referee.game import PlayerColor, Coord, Direction, \
     Action, MoveAction, GrowAction
 from .board import Board
 from math import floor, sqrt, log
-from random import choice
+from random import choice, choices
 from time import time
 from copy import deepcopy
 
@@ -73,15 +73,19 @@ class Agent:
 
         remainingTime = referee["time_remaining"]
         print(referee)
+        return self.minimax()
         print(remainingTime)
         r = self._root
         print([r.action, r.color, r.visits, r.wins, r.draws])
+        return self.MCTS(remainingTime)
         match self._color:
             case PlayerColor.RED:
+                if self._board.roundNumber < 25:
+                    return self.minimax()
                 return self.MCTS(remainingTime)
             case PlayerColor.BLUE:
-                return self.MCTS(remainingTime)
                 return self.minimax()
+                return self.MCTS(remainingTime)
 
 
     def update(self, color: PlayerColor, action: Action, **referee: dict):
@@ -108,7 +112,10 @@ class Agent:
         self._board.playAction(color, action)
         self._root = self._root.children.get(action, None)
         if self._root == None:
+            print(f"{self._color} Didn't find root child!!!!!")
             self._root = MCTS_Node(self._board.currentPlayer.opponent)
+        else:
+            print(f"{self._color} Found root child!!!!!")
         
         
 
@@ -132,10 +139,10 @@ class Agent:
             print(self._color, "to play")
             print(self._board.currentPlayer, "on the board")
             '''
-            self.indent += 1
+            #self.indent += 1
             self._board.playAction(self._board.currentPlayer, move)
             score = self.minimax_value(depth)
-            self.indent -= 1
+            #self.indent -= 1
             '''j
             with open("log.txt", mode="a", encoding="utf-8") as fp:
                 fp.write(f'Overall score of {score} for move {move}\n')
@@ -159,7 +166,7 @@ class Agent:
 
 
         # Check for winner
-        if self._board.winner != None:
+        if self._board.gameOver():
             return self._board.staticEval(self._color)
         
         if depth <= 0:
@@ -169,13 +176,13 @@ class Agent:
 
         moveList = self._board.getMoves()
 
-        self.indent -= 1
+        #self.indent -= 1
         '''
         with open("log.txt", mode="a", encoding="utf-8") as fp:
             fp.write('    ' * self.indent + f'{self._board.currentPlayer} \
                     selecting best move\n')
             '''
-        self.indent += 1
+        #self.indent += 1
         # print(self._board.currentPlayer, "selecting best move")
         # Maximising player
         if self._board.currentPlayer == self._color:
@@ -247,11 +254,11 @@ class Agent:
             return minEval
 
 
-    def MCTS(self, remaingTime: int) -> Action:
-        end = time() + remaingTime / (Board.MOVE_LIMIT - self._board.roundNumber)
-        end = time() + 4.5
-        #print(f'Starting MCTS from board state below')
-        #print(self._board.render(use_color=True))
+    def MCTS(self, remainingTime: int) -> Action:
+        end = time() + 2 * remainingTime / (1 + Board.MOVE_LIMIT - self._board.roundNumber)
+        #end = time() + 1.5
+        print(f'Starting MCTS from board state below')
+        print(self._board.render(use_color=True))
         while time() < end:
             leaf = self.MCTS_Select()
             child = self.MCTS_Expand(leaf)
@@ -264,11 +271,11 @@ class Agent:
                 child = child.parent
 
         r = self._root
-        #print(f'Ended MCTS on board state below')
-        #print(self._board.render(use_color=True))
-        #print([r.action, r.color, r.visits, r.wins, r.draws])
-        #return max(self._root.children.items(), key=lambda item: item[1].visits)[0]
-        return max(self._root.children.items(), key=lambda item: item[1].wins / item[1].visits)[0]
+        print(f'Ended MCTS on board state below')
+        print(self._board.render(use_color=True))
+        print([r.action, r.color, r.visits, r.wins, r.draws])
+        return max(self._root.children.items(), key=lambda item: item[1].visits)[0]
+        #return max(self._root.children.items(), key=lambda item: item[1].wins / item[1].visits)[0]
    
 
 
@@ -301,7 +308,19 @@ class Agent:
         #print(board.render(use_color=True))
         while not board.gameOver():
             moves = board.getMoves()
-            move = choice(moves)
+            #move = choice(moves)
+            weights = []
+            for move in moves:
+                weighting = 1
+                if type(move) == MoveAction:
+                    for dir in move.directions:
+                        if dir in [Direction.Up, Direction.UpLeft, Direction.UpRight,
+                            Direction.Down, Direction.DownLeft, Direction.DownRight]:
+                            weighting += 1
+
+                weights.append(weighting)
+
+            move = choices(population=moves, weights=weights)[0]
             board.playAction(board.currentPlayer, move)
         
         #print(f'The Winner was {board.winner}')
@@ -310,6 +329,8 @@ class Agent:
 
     def MCTS_Backpropogate(self, node: MCTS_Node, result: PlayerColor | None):
         while node != None:
+            r = node
+            #print([r.color, r.visits, r.wins, r.draws, r.action])
             node.visits += 1
 
             match result:
@@ -319,5 +340,6 @@ class Agent:
                     node.wins += 1
                 case node.color.opponent:
                     pass
-            
+
+            #print([r.color, r.visits, r.wins, r.draws, r.action])
             node = node.parent
