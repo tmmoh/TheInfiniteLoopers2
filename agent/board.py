@@ -193,16 +193,28 @@ class Board:
 
         self._redPointHistory.append(-redDist)
         self._bluePointHistory.append(-blueDist)
-
-        # Check for winner
+        
+                # Check for winner
         if redDist == 0 and blueDist > 0:
-            self._redStaticEval = Board.StaticEval(inf, blueDist, blueDist)
-            self._blueStaticEval = Board.StaticEval(-inf, -blueDist, -blueDist)
+            self._redStaticEval = Board.StaticEval(inf, 
+                                                   blueDist, 
+                                                   blueDist, 
+                                                   tuple(self._redPointHistory))
+            self._blueStaticEval = Board.StaticEval(-inf, 
+                                                    -blueDist, 
+                                                    -blueDist,
+                                                    tuple(self._bluePointHistory))
             self.winner = PlayerColor.RED
         
         elif blueDist == 0 and redDist > 0:
-            self._blueStaticEval = Board.StaticEval(inf, redDist, redDist)
-            self._redStaticEval = Board.StaticEval(-inf, -redDist, -redDist)
+            self._blueStaticEval = Board.StaticEval(inf,
+                                                    redDist, 
+                                                    redDist,
+                                                    tuple(self._bluePointHistory))
+            self._redStaticEval = Board.StaticEval(-inf, 
+                                                   -redDist, 
+                                                   -redDist,
+                                                   tuple(self._redPointHistory))
             self.winner = PlayerColor.BLUE
         
         else:
