@@ -350,6 +350,8 @@ class Board:
             case PlayerColor.BLUE:
                 return self._blueStaticEval
 
+    def state(self) -> tuple[tuple[Coord, CellState], ...]:
+        return tuple(sorted(self._board.items()))
         
     @staticmethod
     def legalMoves(color: PlayerColor) -> list[Direction]:

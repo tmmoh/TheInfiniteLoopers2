@@ -1,6 +1,7 @@
 # COMP30024 Artificial Intelligence, Semester 1 2025
 # Project Part B: Game Playing Agent
 
+import collections
 from referee.game import PlayerColor, Coord, Direction, \
     Action, MoveAction, GrowAction
 from .board import Board, CellState
@@ -8,6 +9,7 @@ from math import floor, sqrt, log
 from random import choice, choices
 from time import time
 from copy import deepcopy
+from collections import defaultdict
 
 
 BOARD_N = 8
@@ -48,7 +50,8 @@ class Agent:
     _board: Board
     _root: MCTS_Node
     _evaluations: dict[tuple[tuple[Coord, CellState], ...], 
-                       tuple[Board.StaticEval, Board.StaticEval]]
+                       dict[tuple[int, PlayerColor], 
+                            tuple[Action, Board.StaticEval]]]
     _usedTime: float
 
     def __init__(self, color: PlayerColor, **referee: dict):
@@ -62,6 +65,7 @@ class Agent:
         self._legalMoves = Board.legalMoves(self._color)
         self._root = MCTS_Node(self._board.currentPlayer.opponent)
         self._usedTime = 0
+        self._evaluations = defaultdict(dict)
 
 
 
@@ -78,7 +82,7 @@ class Agent:
         # the initial moves of the game, so you should use some game playing
         # technique(s) to determine the best action to take.
 
-        # print(referee)
+        print(referee)
         # fx = 0.0026 * (-x*x + 75*x)
         # allocatedTime = self._usedTime - usedTime
         # allocatedTime =  2 * remainingTime / (1 + Board.MOVE_LIMIT - self._board.roundNumber)
@@ -96,20 +100,21 @@ class Agent:
                 {actualUsedTime} seconds actually used\n')
 
         self._usedTime += fx
-        return self.minimax(timeAllocated)
 
+        return self.minimax(timeAllocated)
+        '''
         print(remainingTime)
         r = self._root
         print([r.action, r.color, r.visits, r.wins, r.draws])
         return self.MCTS(remainingTime)
+        '''
         match self._color:
             case PlayerColor.RED:
                 if self._board.roundNumber < 25:
-                    return self.minimax()
-                return self.MCTS(remainingTime)
+                    return self.minimax(timeAllocated)
+                return self.MCTS(timeAllocated)
             case PlayerColor.BLUE:
-                return self.minimax()
-                return self.MCTS(remainingTime)
+                return self.minimax(timeAllocated)
 
 
     def update(self, color: PlayerColor, action: Action, **referee: dict):
@@ -152,31 +157,30 @@ class Agent:
             print(f'Enough time for depth {depth}')
             best_score = Board.MIN_EVAL
             best_move = None
+
+            dct = self._evaluations.get(self._board.state(), None)
+            if dct != None:
+                eval = dct.get((depth, self._board.currentPlayer), None)
+                if eval != None:
+                    move, score = eval
+                    if score > best_score:
+                        best_score = score
+                        best_move = move
+                    timeTaken = time() - start
+                    print(f"Found evaluation for depth {depth} with action {move}")
+                    break
+
             for move in moveList: 
-                '''j
-                with open("log.txt", mode="a", encoding="utf-8") as fp:
-                    fp.write(f'Round {self._board.roundNumber}: Searching through \
-                             move {move}\n')
-                    fp.write(f'{self._color} to play\n')
-                    '''
-                '''
-                print("Searching through move", move)
-                print(self._color, "to play")
-                print(self._board.currentPlayer, "on the board")
-                '''
-                #self.indent += 1
                 self._board.playAction(self._board.currentPlayer, move)
                 score = self.minimax_value(depth)
-                #self.indent -= 1
-                '''j
-                with open("log.txt", mode="a", encoding="utf-8") as fp:
-                    fp.write(f'Overall score of {score} for move {move}\n')
-                    '''
-                #print("Overall Score of", score, move)
-                if(score > best_score):
+
+                if score > best_score:
                     best_score = score
                     best_move = move
+
                 self._board.undoAction()
+                x = self._evaluations[self._board.state()]
+                x[(depth, self._board.currentPlayer)] = (move, score)
 
             timeTaken = time() - start
             
@@ -199,47 +203,18 @@ class Agent:
         if depth <= 0:
             return self._board.staticEval(self._color)
 
-        # keep going with minimax
-
         moveList = self._board.getMoves()
 
-        #self.indent -= 1
-        '''
-        with open("log.txt", mode="a", encoding="utf-8") as fp:
-            fp.write('    ' * self.indent + f'{self._board.currentPlayer} \
-                    selecting best move\n')
-            '''
-        #self.indent += 1
-        # print(self._board.currentPlayer, "selecting best move")
         # Maximising player
 
         if self._board.currentPlayer == self._color:
             maxEval = Board.MIN_EVAL
             for move in moveList:
-                '''
-                with open("log.txt", mode="a", encoding="utf-8") as fp:
-                    fp.write('    ' * self.indent + f'Trying {move}\n')
-                    '''
-
                 self._board.playAction(self._board.currentPlayer, move)
                 eval = self.minimax_value(depth - 1, alpha, beta)
 
-                '''
-                with open("log.txt", mode="a", encoding="utf-8") as fp:
-                    self.indent += 1
-                    fp.write('    ' * self.indent + f'{move} with \
-                            score {eval}\n')
-                    # print(eval, move)
-                    '''
-
                 maxEval = max(maxEval, eval)
                 alpha = max(alpha, eval)
-
-                '''
-                with open("log.txt", mode="a", encoding="utf-8") as fp:
-                    self.indent -= 1
-                    fp.write('    ' * self.indent + f'Undoing {move}\n')
-                    '''
 
                 self._board.undoAction()
                 if (beta <= alpha):
@@ -250,30 +225,11 @@ class Agent:
         else: #Minimising Player - Opponent Move
             minEval = Board.MAX_EVAL
             for move in moveList:
-                '''
-                with open("log.txt", mode="a", encoding="utf-8") as fp:
-                    fp.write(f'Trying {move}\n')
-                    '''
-
                 self._board.playAction(self._board.currentPlayer, move)
                 eval = self.minimax_value(depth - 1, alpha, beta)
 
-                '''
-                with open("log.txt", mode="a", encoding="utf-8") as fp:
-                    self.indent += 1
-                    fp.write('    ' * self.indent + f'{move} with \
-                            score {eval}\n')
-                    # print(eval, move)
-                    '''
-
                 minEval = min(minEval, eval)
                 beta = min(beta, eval)
-
-                '''
-                with open("log.txt", mode="a", encoding="utf-8") as fp:
-                    self.indent -= 1
-                    fp.write('    ' * self.indent + f'Undoing {move}\n')
-                    '''
 
                 self._board.undoAction()
                 if (beta <= alpha):
@@ -282,11 +238,12 @@ class Agent:
             return minEval
 
 
-    def MCTS(self, remainingTime: int) -> Action:
+    def MCTS(self, remainingTime: float) -> Action:
         end = time() + 2 * remainingTime / (1 + Board.MOVE_LIMIT - self._board.roundNumber)
         #end = time() + 1.5
         print(f'Starting MCTS from board state below')
         print(self._board.render(use_color=True))
+        end = time() + remainingTime
         while time() < end:
             leaf = self.MCTS_Select()
             child = self.MCTS_Expand(leaf)
