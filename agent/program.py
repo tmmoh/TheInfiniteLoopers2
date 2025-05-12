@@ -89,7 +89,7 @@ class Agent:
         #allocatedTime =  2 * 180 / 75 * (-x/75 + 1)
 
         remainingTime: float = referee["time_remaining"]
-        actualUsedTime = 180 - remainingTime
+        actualUsedTime = 180.001 - remainingTime
         x = (self._board.roundNumber + 1) // 2
         fx = 0.000065 * x * (x-75) * (x-75)
         timeAllocated = max(self._usedTime/actualUsedTime, 0.1) * fx
