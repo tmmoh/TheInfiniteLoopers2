@@ -136,12 +136,10 @@ class Agent:
         
 
     def minimax(self, allocatedTime: float) -> Action:
-        depth = min(1 + floor(self._board.roundNumber ** (1/4)), 
-                    Board.MOVE_LIMIT - self._board.roundNumber)
-        best_score = Board.MIN_EVAL
-        best_move = None
-
         moveList = self._board.getMoves()
+        best_score = Board.MIN_EVAL
+        best_move = choice(moveList)
+
         # print(*moveList)
         
         ### Iterative Deepening Approach
@@ -156,7 +154,7 @@ class Agent:
             depth += 1
             print(f'Enough time for depth {depth}')
             best_score = Board.MIN_EVAL
-            best_move = None
+            best_move = choice(moveList)
 
             dct = self._evaluations.get(self._board.state(), None)
             if dct != None:
