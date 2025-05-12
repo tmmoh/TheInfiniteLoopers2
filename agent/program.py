@@ -65,7 +65,7 @@ class Agent:
         self._legalMoves = Board.legalMoves(self._color)
         self._root = MCTS_Node(self._board.currentPlayer.opponent)
         self._usedTime = 0
-        self._evaluations = defaultdict(dict)
+        # self._evaluations = defaultdict(dict)
 
 
 
@@ -155,7 +155,8 @@ class Agent:
             print(f'Enough time for depth {depth}')
             best_score = Board.MIN_EVAL
             best_move = choice(moveList)
-
+            
+            '''
             dct = self._evaluations.get(self._board.state(), None)
             if dct != None:
                 eval = dct.get((depth, self._board.currentPlayer), None)
@@ -167,6 +168,7 @@ class Agent:
                     timeTaken = time() - start
                     print(f"Found evaluation for depth {depth} with action {move}")
                     break
+                '''
 
             for move in moveList: 
                 self._board.playAction(self._board.currentPlayer, move)
@@ -177,8 +179,8 @@ class Agent:
                     best_move = move
 
                 self._board.undoAction()
-                x = self._evaluations[self._board.state()]
-                x[(depth, self._board.currentPlayer)] = (move, score)
+                # x = self._evaluations[self._board.state()]
+                # x[(depth, self._board.currentPlayer)] = (move, score)
 
             timeTaken = time() - start
             
